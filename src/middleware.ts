@@ -1,7 +1,5 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { createHash } from "crypto";
-
 const COOKIE_NAME = "console_session";
 
 // Paths that don't require authentication
@@ -17,11 +15,15 @@ function isPublic(pathname: string): boolean {
   return PUBLIC_PATHS.some((p) => pathname.startsWith(p));
 }
 
-function hashSecret(secret: string): string {
-  return createHash("sha256").update(secret).digest("hex");
+async function hashSecret(secret: string): Promise<string> {
+  const encoded = new TextEncoder().encode(secret);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", encoded);
+  return Array.from(new Uint8Array(hashBuffer))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 }
 
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   if (isPublic(pathname)) return NextResponse.next();
@@ -36,7 +38,7 @@ export function middleware(request: NextRequest) {
   }
 
   const sessionCookie = request.cookies.get(COOKIE_NAME)?.value;
-  const expected = hashSecret(process.env.APP_SECRET ?? "");
+  const expected = await hashSecret(process.env.APP_SECRET ?? "");
 
   if (sessionCookie !== expected) {
     const loginUrl = new URL("/login", request.url);
