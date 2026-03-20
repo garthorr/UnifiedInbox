@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "target": "ES2017",
+    "module": "commonjs",
+    "lib": ["es2017"],
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "outDir": "./dist",
+    "rootDir": "..",
+    "baseUrl": "..",
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": ["index.ts", "../src/lib/**/*.ts", "../prisma/**/*.ts"],
+  "exclude": ["node_modules", "dist", "../src/app/**/*.ts"]
+}
