@@ -19,7 +19,7 @@ services:
     build:
       context: .
       target: dev
-    command: npm run dev
+    command: sh -c "npx prisma db push --skip-generate && npx prisma db seed; npm run dev"
     volumes:
       - .:/app
       - /app/node_modules
