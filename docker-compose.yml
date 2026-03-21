@@ -6,7 +6,7 @@ services:
       POSTGRES_USER: app
       POSTGRES_PASSWORD: devpassword
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - ./data/postgres:/var/lib/postgresql/data
     ports:
       - "5432:5432"
     healthcheck:
@@ -48,5 +48,3 @@ services:
     environment:
       DATABASE_URL: postgresql://app:devpassword@db:5432/unified_inbox
 
-volumes:
-  postgres_data:
