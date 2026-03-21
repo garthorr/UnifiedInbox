@@ -1,0 +1,194 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
+enum WorkItemStatus {
+  NEW
+  ACTIVE
+  WAITING
+  DELEGATED
+  TODOIST
+  DONE
+}
+
+enum TaskProvider {
+  TODOIST
+  OPENPROJECT
+}
+
+enum RuleAction {
+  SUGGEST_DOMAIN
+  AUTO_ASSIGN_DOMAIN
+  SUGGEST_WORK_ITEM
+  FLAG_FOR_REVIEW
+}
+
+enum ActivityEventType {
+  ACCOUNT_CONNECTED
+  ACCOUNT_DISCONNECTED
+  ACCOUNT_SYNC_STARTED
+  ACCOUNT_SYNC_COMPLETED
+  ACCOUNT_SYNC_FAILED
+  THREAD_IMPORTED
+  THREAD_UPDATED
+  THREAD_STALE
+  WORK_ITEM_CREATED
+  WORK_ITEM_UPDATED
+  WORK_ITEM_STATUS_CHANGED
+  THREAD_ATTACHED
+  THREAD_DETACHED
+  DOMAIN_ASSIGNED
+  TASK_EXPORTED
+  TASK_SYNC_UPDATED
+  RULE_APPLIED
+}
+
+// ─── Models ───────────────────────────────────────────────────────────────────
+
+model Account {
+  id              String    @id @default(uuid())
+  email           String    @unique
+  displayName     String
+  accessToken     String    // encrypted at rest
+  refreshToken    String    // encrypted at rest
+  tokenExpiresAt  DateTime
+  isActive        Boolean   @default(true)
+  lastSyncAt      DateTime?
+  historyId       String?   // Gmail history ID for incremental sync
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  threads         ThreadMirror[]
+  activityLogs    ActivityLog[]
+}
+
+model ThreadMirror {
+  id                    String    @id @default(uuid())
+  gmailThreadId         String
+  accountId             String
+  subject               String
+  snippet               String    @db.Text
+  participantAddresses  String[]
+  gmailLabelIds         String[]
+  messageCount          Int
+  hasAttachments        Boolean   @default(false)
+  isUnread              Boolean   @default(false)
+  lastMessageAt         DateTime
+  firstMessageAt        DateTime
+  historyId             String
+  syncedAt              DateTime  @default(now())
+  isStale               Boolean   @default(false)
+  workItemId            String?
+  domainId              String?   // suggested/assigned domain (independent of work item)
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  account               Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  workItem              WorkItem? @relation(fields: [workItemId], references: [id], onDelete: SetNull)
+  domain                Domain?   @relation(fields: [domainId], references: [id], onDelete: SetNull)
+
+  @@unique([gmailThreadId, accountId])
+  @@index([accountId])
+  @@index([workItemId])
+  @@index([domainId])
+  @@index([lastMessageAt])
+  @@index([isUnread])
+  @@index([isStale])
+}
+
+model Domain {
+  id          String     @id @default(uuid())
+  name        String     @unique
+  color       String     @default("#6366f1")
+  description String?
+  isActive    Boolean    @default(true)
+  sortOrder   Int        @default(0)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  workItems   WorkItem[]
+  threads     ThreadMirror[]
+  rules       Rule[]
+}
+
+model WorkItem {
+  id          String          @id @default(uuid())
+  title       String
+  summary     String?         @db.Text
+  status      WorkItemStatus  @default(NEW)
+  domainId    String?
+  dueDate     DateTime?
+  notes       String?         @db.Text
+  checklist   Json?           // [{text: string, done: boolean}]
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  domain       Domain?        @relation(fields: [domainId], references: [id])
+  threads      ThreadMirror[]
+  taskLinks    TaskLink[]
+  activityLogs ActivityLog[]
+
+  @@index([domainId])
+  @@index([status])
+  @@index([dueDate])
+}
+
+model TaskLink {
+  id              String        @id @default(uuid())
+  workItemId      String
+  provider        TaskProvider
+  externalId      String
+  externalUrl     String?
+  externalTitle   String?
+  externalStatus  String?
+  exportedAt      DateTime      @default(now())
+  lastSyncAt      DateTime?
+  createdAt       DateTime      @default(now())
+
+  workItem        WorkItem      @relation(fields: [workItemId], references: [id], onDelete: Cascade)
+
+  @@unique([workItemId, provider])
+  @@unique([provider, externalId])
+}
+
+model Rule {
+  id          String      @id @default(uuid())
+  name        String
+  description String?
+  isActive    Boolean     @default(true)
+  priority    Int         @default(100)
+  conditions  Json        // [{field, operator, value}]
+  action      RuleAction
+  domainId    String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  domain      Domain?     @relation(fields: [domainId], references: [id], onDelete: SetNull)
+
+  @@index([isActive, priority])
+}
+
+model ActivityLog {
+  id          String              @id @default(uuid())
+  eventType   ActivityEventType
+  accountId   String?
+  workItemId  String?
+  description String
+  metadata    Json?
+  createdAt   DateTime            @default(now())
+
+  account     Account?            @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  workItem    WorkItem?           @relation(fields: [workItemId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([accountId])
+  @@index([workItemId])
+  @@index([eventType])
+}
