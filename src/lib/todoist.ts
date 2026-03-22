@@ -1,4 +1,4 @@
-const TODOIST_API = "https://api.todoist.com/rest/v2";
+const TODOIST_API = "https://api.todoist.com/api/v1";
 
 function apiKey() {
   const key = process.env.TODOIST_API_KEY;
