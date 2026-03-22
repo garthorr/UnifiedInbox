@@ -150,12 +150,14 @@ export function WorkItemDetail({ workItem, allDomains, todoistEnabled }: WorkIte
 
   const fetchProjects = useCallback(async () => {
     setProjectsLoading(true);
+    setTodoistError("");
     try {
       const res = await fetch("/api/todoist/projects");
-      if (!res.ok) throw new Error("Failed to load projects");
-      setProjects(await res.json());
-    } catch {
-      setTodoistError("Could not load Todoist projects");
+      if (!res.ok) throw new Error(`Failed to load projects (${res.status})`);
+      const data = await res.json();
+      setProjects(Array.isArray(data) ? data : []);
+    } catch (err) {
+      setTodoistError(err instanceof Error ? err.message : "Could not load Todoist projects");
     } finally {
       setProjectsLoading(false);
     }
@@ -163,12 +165,11 @@ export function WorkItemDetail({ workItem, allDomains, todoistEnabled }: WorkIte
 
   useEffect(() => {
     if (!pickerOpen) return;
-    fetchProjects();
     setSelectedProjectId("");
     setSelectedSectionId("");
     setSections([]);
-    setTodoistError("");
-  }, [pickerOpen, fetchProjects]);
+    if (projects.length === 0) fetchProjects();
+  }, [pickerOpen, projects.length, fetchProjects]);
 
   useEffect(() => {
     if (!selectedProjectId) { setSections([]); return; }
