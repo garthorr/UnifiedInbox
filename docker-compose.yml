@@ -6,7 +6,7 @@ services:
       POSTGRES_USER: app
       POSTGRES_PASSWORD: devpassword
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - ./data/postgres:/var/lib/postgresql/data
     ports:
       - "5432:5432"
     healthcheck:
@@ -19,7 +19,7 @@ services:
     build:
       context: .
       target: dev
-    command: npm run dev
+    command: sh -c "npx prisma db push --skip-generate && npx prisma db seed; npm run dev"
     volumes:
       - .:/app
       - /app/node_modules
@@ -48,5 +48,3 @@ services:
     environment:
       DATABASE_URL: postgresql://app:devpassword@db:5432/unified_inbox
 
-volumes:
-  postgres_data:
