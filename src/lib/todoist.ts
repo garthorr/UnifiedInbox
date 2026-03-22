@@ -22,10 +22,53 @@ export interface TodoistTask {
   due?: { date: string } | null;
 }
 
+export interface TodoistProject {
+  id: string;
+  name: string;
+  parent_id: string | null;
+  order: number;
+  color: string;
+  is_inbox_project: boolean;
+}
+
+export interface TodoistSection {
+  id: string;
+  project_id: string;
+  name: string;
+  order: number;
+}
+
+export async function listProjects(): Promise<TodoistProject[]> {
+  const res = await fetch(`${TODOIST_API}/projects`, {
+    headers: { Authorization: `Bearer ${apiKey()}` },
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Todoist listProjects failed ${res.status}: ${text}`);
+  }
+  const projects: TodoistProject[] = await res.json();
+  return projects.sort((a, b) => a.order - b.order);
+}
+
+export async function listSections(projectId: string): Promise<TodoistSection[]> {
+  const res = await fetch(
+    `${TODOIST_API}/sections?project_id=${encodeURIComponent(projectId)}`,
+    { headers: { Authorization: `Bearer ${apiKey()}` } }
+  );
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Todoist listSections failed ${res.status}: ${text}`);
+  }
+  const sections: TodoistSection[] = await res.json();
+  return sections.sort((a, b) => a.order - b.order);
+}
+
 export async function createTask(opts: {
   title: string;
   notes?: string | null;
   dueDate?: Date | string | null;
+  projectId?: string | null;
+  sectionId?: string | null;
 }): Promise<TodoistTask> {
   const body: Record<string, unknown> = { content: opts.title };
   if (opts.notes) body.description = opts.notes;
@@ -33,8 +76,10 @@ export async function createTask(opts: {
     const d = new Date(opts.dueDate);
     body.due_date = d.toISOString().slice(0, 10); // YYYY-MM-DD
   }
-  const projectId = process.env.TODOIST_PROJECT_ID;
+  // Explicit selection takes precedence over env default
+  const projectId = opts.projectId ?? process.env.TODOIST_PROJECT_ID;
   if (projectId) body.project_id = projectId;
+  if (opts.sectionId) body.section_id = opts.sectionId;
 
   const res = await fetch(`${TODOIST_API}/tasks`, {
     method: "POST",

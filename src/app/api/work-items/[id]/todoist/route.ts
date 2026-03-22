@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db";
 import { createTask, isConfigured } from "@/lib/todoist";
 
 export async function POST(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
@@ -14,6 +14,11 @@ export async function POST(
       { status: 503 }
     );
   }
+
+  const body = await request.json().catch(() => ({})) as {
+    projectId?: string;
+    sectionId?: string;
+  };
 
   const workItem = await prisma.workItem.findUnique({
     where: { id },
@@ -35,6 +40,8 @@ export async function POST(
     title: workItem.title,
     notes: workItem.notes,
     dueDate: workItem.dueDate,
+    projectId: body.projectId ?? null,
+    sectionId: body.sectionId ?? null,
   });
 
   const [taskLink] = await prisma.$transaction([
@@ -58,7 +65,13 @@ export async function POST(
         eventType: "WORK_ITEM_STATUS_CHANGED",
         workItemId: id,
         description: `Exported to Todoist: ${task.url}`,
-        metadata: { from: workItem.status, to: "TODOIST", todoistTaskId: task.id },
+        metadata: {
+          from: workItem.status,
+          to: "TODOIST",
+          todoistTaskId: task.id,
+          ...(body.projectId && { todoistProjectId: body.projectId }),
+          ...(body.sectionId && { todoistSectionId: body.sectionId }),
+        },
       },
     }),
   ]);
