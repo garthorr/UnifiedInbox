@@ -4,6 +4,7 @@ import { isConfigured as todoistConfigured } from "@/lib/todoist";
 import { AppShell } from "@/components/layout/AppShell";
 import { InboxFilters } from "@/components/inbox/InboxFilters";
 import { InboxPane } from "@/components/inbox/InboxPane";
+import { SyncAllButton } from "@/components/inbox/SyncAllButton";
 
 interface PageProps {
   searchParams: Promise<{
@@ -47,9 +48,12 @@ async function InboxContent({ searchParams }: PageProps) {
       <div className="flex-shrink-0 border-b bg-white px-6 py-3 flex items-center gap-4">
         <h1 className="text-base font-semibold text-slate-900 shrink-0">Unified Intake</h1>
         <InboxFilters accounts={accounts} />
-        <span className="ml-auto text-xs text-slate-400">
-          {threads.length} thread{threads.length !== 1 ? "s" : ""}
-        </span>
+        <div className="ml-auto flex items-center gap-2">
+          <span className="text-xs text-slate-400">
+            {threads.length} thread{threads.length !== 1 ? "s" : ""}
+          </span>
+          <SyncAllButton />
+        </div>
       </div>
       <InboxPane threads={threads} todoistEnabled={todoistConfigured()} />
     </div>
