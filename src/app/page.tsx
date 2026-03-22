@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db";
 import { isConfigured as todoistConfigured } from "@/lib/todoist";
 import { AppShell } from "@/components/layout/AppShell";
 import { InboxFilters } from "@/components/inbox/InboxFilters";
-import { ThreadList } from "@/components/inbox/ThreadList";
+import { InboxPane } from "@/components/inbox/InboxPane";
 
 interface PageProps {
   searchParams: Promise<{
@@ -43,17 +43,15 @@ async function InboxContent({ searchParams }: PageProps) {
   ]);
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="border-b bg-white px-6 py-3 flex items-center gap-4">
+    <div className="flex flex-col h-full overflow-hidden">
+      <div className="flex-shrink-0 border-b bg-white px-6 py-3 flex items-center gap-4">
         <h1 className="text-base font-semibold text-slate-900 shrink-0">Unified Intake</h1>
         <InboxFilters accounts={accounts} />
         <span className="ml-auto text-xs text-slate-400">
           {threads.length} thread{threads.length !== 1 ? "s" : ""}
         </span>
       </div>
-      <div className="flex-1 overflow-y-auto">
-        <ThreadList threads={threads} todoistEnabled={todoistConfigured()} />
-      </div>
+      <InboxPane threads={threads} todoistEnabled={todoistConfigured()} />
     </div>
   );
 }

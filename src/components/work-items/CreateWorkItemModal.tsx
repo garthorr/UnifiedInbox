@@ -61,6 +61,7 @@ export function CreateWorkItemModal({
   const [sections, setSections] = useState<{ id: string; name: string }[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [selectedSectionId, setSelectedSectionId] = useState("");
+  const [dueDate, setDueDate] = useState("");
   const [projectsLoading, setProjectsLoading] = useState(false);
   const [sectionsLoading, setSectionsLoading] = useState(false);
   const [todoistError, setTodoistError] = useState("");
@@ -131,6 +132,7 @@ export function CreateWorkItemModal({
       if (sendToTodoist && selectedProjectId) {
         const body: Record<string, string> = { projectId: selectedProjectId };
         if (selectedSectionId) body.sectionId = selectedSectionId;
+        if (dueDate) body.dueDate = dueDate;
         await fetch(`/api/work-items/${workItem.id}/todoist`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -278,6 +280,19 @@ export function CreateWorkItemModal({
                       )}
                     </div>
                   )}
+
+                  {/* Due date */}
+                  <div className="space-y-1">
+                    <p className="text-xs font-medium text-slate-500">
+                      Due date <span className="font-normal text-slate-400">(optional)</span>
+                    </p>
+                    <input
+                      type="date"
+                      value={dueDate}
+                      onChange={(e) => setDueDate(e.target.value)}
+                      className="h-8 w-full rounded-md border border-slate-200 px-2 text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
 
                   {sendToTodoist && !selectedProjectId && projects.length > 0 && (
                     <p className="text-xs text-amber-600">Select a project to add to Todoist</p>

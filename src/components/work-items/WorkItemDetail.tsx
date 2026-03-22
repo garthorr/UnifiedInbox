@@ -145,6 +145,9 @@ export function WorkItemDetail({ workItem, allDomains, todoistEnabled }: WorkIte
   const [sections, setSections] = useState<{ id: string; name: string }[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [selectedSectionId, setSelectedSectionId] = useState("");
+  const [todoistDueDate, setTodoistDueDate] = useState(
+    workItem.dueDate ? new Date(workItem.dueDate).toISOString().slice(0, 10) : ""
+  );
   const [projectsLoading, setProjectsLoading] = useState(false);
   const [sectionsLoading, setSectionsLoading] = useState(false);
 
@@ -259,6 +262,7 @@ export function WorkItemDetail({ workItem, allDomains, todoistEnabled }: WorkIte
       const body: Record<string, string> = {};
       if (selectedProjectId) body.projectId = selectedProjectId;
       if (selectedSectionId) body.sectionId = selectedSectionId;
+      if (todoistDueDate) body.dueDate = todoistDueDate;
       const res = await fetch(`/api/work-items/${workItem.id}/todoist`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -564,6 +568,19 @@ export function WorkItemDetail({ workItem, allDomains, todoistEnabled }: WorkIte
                           )}
                         </div>
                       )}
+
+                      {/* Due date */}
+                      <div className="space-y-1">
+                        <p className="text-xs font-medium text-slate-500">
+                          Due date <span className="font-normal text-slate-400">(optional)</span>
+                        </p>
+                        <input
+                          type="date"
+                          value={todoistDueDate}
+                          onChange={(e) => setTodoistDueDate(e.target.value)}
+                          className="h-8 w-full rounded-md border border-slate-200 px-2 text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
 
                       {todoistError && projects.length > 0 && (
                         <p className="text-xs text-red-500">{todoistError}</p>
