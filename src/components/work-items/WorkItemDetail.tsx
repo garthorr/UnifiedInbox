@@ -24,6 +24,8 @@ import {
   CheckSquare,
   Square,
   Calendar,
+  ArrowUpRight,
+  Link2Off,
 } from "lucide-react";
 import { gmailThreadUrl, relativeTime, formatDate } from "@/lib/utils";
 import type { WorkItemStatus } from "@prisma/client";
@@ -43,6 +45,17 @@ interface Thread {
   messageCount: number;
   lastMessageAt: string | Date;
   account: { id: string; email: string };
+}
+
+interface TaskLink {
+  id: string;
+  provider: string;
+  externalId: string;
+  externalUrl: string;
+  externalTitle: string;
+  externalStatus: string | null;
+  exportedAt: string | null;
+  lastSyncAt: string | null;
 }
 
 interface ActivityLog {
@@ -69,12 +82,14 @@ interface WorkItem {
   checklist: ChecklistItem[] | null;
   domain: Domain | null;
   threads: Thread[];
+  taskLinks: TaskLink[];
   activityLogs: ActivityLog[];
 }
 
 interface WorkItemDetailProps {
   workItem: WorkItem;
   allDomains: Domain[];
+  todoistEnabled: boolean;
 }
 
 const STATUSES: WorkItemStatus[] = [
@@ -95,7 +110,7 @@ const STATUS_LABELS: Record<WorkItemStatus, string> = {
   DONE: "Done",
 };
 
-export function WorkItemDetail({ workItem, allDomains }: WorkItemDetailProps) {
+export function WorkItemDetail({ workItem, allDomains, todoistEnabled }: WorkItemDetailProps) {
   const router = useRouter();
   const [title, setTitle] = useState(workItem.title);
   const [editingTitle, setEditingTitle] = useState(false);
@@ -110,6 +125,9 @@ export function WorkItemDetail({ workItem, allDomains }: WorkItemDetailProps) {
   const [showAttachModal, setShowAttachModal] = useState(false);
   const [detaching, setDetaching] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [todoistLoading, setTodoistLoading] = useState(false);
+  const [todoistError, setTodoistError] = useState("");
+  const todoistLink = workItem.taskLinks.find((tl) => tl.provider === "TODOIST") ?? null;
 
   async function patch(data: Record<string, unknown>) {
     setSaving(true);
@@ -179,6 +197,45 @@ export function WorkItemDetail({ workItem, allDomains }: WorkItemDetailProps) {
       router.refresh();
     } finally {
       setDetaching(null);
+    }
+  }
+
+  async function exportToTodoist() {
+    setTodoistLoading(true);
+    setTodoistError("");
+    try {
+      const res = await fetch(`/api/work-items/${workItem.id}/todoist`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error ?? "Export failed");
+      }
+      setStatus("TODOIST");
+      router.refresh();
+    } catch (err) {
+      setTodoistError(err instanceof Error ? err.message : "Export failed");
+    } finally {
+      setTodoistLoading(false);
+    }
+  }
+
+  async function unlinkTodoist() {
+    setTodoistLoading(true);
+    setTodoistError("");
+    try {
+      const res = await fetch(`/api/work-items/${workItem.id}/todoist`, {
+        method: "DELETE",
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error ?? "Unlink failed");
+      }
+      router.refresh();
+    } catch (err) {
+      setTodoistError(err instanceof Error ? err.message : "Unlink failed");
+    } finally {
+      setTodoistLoading(false);
     }
   }
 
@@ -301,6 +358,68 @@ export function WorkItemDetail({ workItem, allDomains }: WorkItemDetailProps) {
               </div>
             )}
           </div>
+
+          {/* Todoist */}
+          {todoistEnabled && (
+            <div>
+              <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1.5 block">
+                Todoist
+              </Label>
+              {todoistLink ? (
+                <div className="rounded-md border bg-white px-3 py-2.5 space-y-1.5">
+                  <div className="flex items-start gap-2">
+                    <div className="flex-1 min-w-0">
+                      <a
+                        href={todoistLink.externalUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sm font-medium text-slate-800 hover:text-blue-600 flex items-center gap-1 truncate"
+                      >
+                        {todoistLink.externalTitle}
+                        <ArrowUpRight className="h-3 w-3 flex-shrink-0" />
+                      </a>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        {todoistLink.externalStatus === "completed"
+                          ? "Completed in Todoist"
+                          : todoistLink.lastSyncAt
+                          ? `Synced ${relativeTime(todoistLink.lastSyncAt)}`
+                          : "Syncing..."}
+                      </p>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 text-xs text-slate-400 hover:text-red-500 flex-shrink-0"
+                      disabled={todoistLoading}
+                      onClick={unlinkTodoist}
+                      title="Remove Todoist link"
+                    >
+                      <Link2Off className="h-3 w-3" />
+                    </Button>
+                  </div>
+                  {todoistError && (
+                    <p className="text-xs text-red-500">{todoistError}</p>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs gap-1.5 w-full justify-start"
+                    disabled={todoistLoading}
+                    onClick={exportToTodoist}
+                  >
+                    <ArrowUpRight className="h-3 w-3" />
+                    {todoistLoading ? "Exporting..." : "Export to Todoist"}
+                  </Button>
+                  {todoistError && (
+                    <p className="text-xs text-red-500">{todoistError}</p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Checklist */}
           <div>
