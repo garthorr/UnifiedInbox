@@ -1,7 +1,7 @@
 # UnifiedInbox — Email Work Console
 
-A personal Gmail-connected operations dashboard that turns email from multiple accounts into
-organized work items grouped by life, business, and volunteer domains.
+A private, self-hosted Gmail dashboard that consolidates multiple accounts into a single
+work console, organizing threads into work items grouped by responsibility area.
 
 > **Status:** Phase 1 complete — MVP running. OAuth, Gmail sync, unified inbox, domains, and work items are operational.
 
@@ -16,18 +16,16 @@ record. The app adds a coordination layer on top.
 In one sentence: **a cross-account work console that groups related threads into work items
 organized by responsibility area.**
 
+Everything runs on your own hardware. No email content is sent to any third party.
+OAuth tokens are encrypted at rest. The app is only reachable on your local network.
+
 ---
 
 ## Domains
 
-| Domain | Description |
-|---|---|
-| Troop 42 | BSA Troop 42 parent/leader communications |
-| Heart of Dallas District | BSA district-level coordination |
-| EducatOrr | EducatOrr nonprofit operations |
-| Lake Highlands Church | Church volunteer and staff communications |
-| SJES | St. John Episcopal School liaison |
-| Personal | Family and personal life |
+Domains are the responsibility areas you want to track — for example, a volunteer organization,
+a side project, a family, or a work role. You define them to match your own life. The seed
+data includes examples; edit or replace them from the Settings page after first run.
 
 ---
 
@@ -50,21 +48,20 @@ Edit `.env`:
 ```env
 GOOGLE_CLIENT_ID=your_client_id
 GOOGLE_CLIENT_SECRET=your_client_secret
-GOOGLE_REDIRECT_URI=http://inbox.yourdomain.com:3000/api/auth/callback
+GOOGLE_REDIRECT_URI=http://inbox.yourhostname.com:3000/api/auth/callback
 ENCRYPTION_KEY=$(openssl rand -hex 32)
 APP_SECRET=any_strong_password
-APP_URL=http://inbox.yourdomain.com:3000
+APP_URL=http://inbox.yourhostname.com:3000
 ```
 
-> **Google OAuth does not accept bare IP addresses** (e.g. `192.168.1.x` or Tailscale IPs) as
-> redirect URIs. Use a real hostname — it can safely resolve to a private/LAN IP.
+> **Google OAuth does not accept bare IP addresses** as redirect URIs. Use a real hostname —
+> it can safely resolve to a private/LAN IP and the app will not be reachable from the internet.
 >
 > **Option A — subdomain you already own (recommended):**
-> Add a DNS `A` record pointing a subdomain to your private IP:
+> Add a DNS `A` record pointing a subdomain to your server's private IP:
 > ```
-> inbox.yourdomain.com  →  192.168.1.x   # or your Tailscale IP
+> inbox.yourhostname.com  →  192.168.1.x
 > ```
-> The app will not be reachable from the internet as long as the IP is private.
 >
 > **Option B — local `/etc/hosts` alias (no DNS required):**
 > Add this line to `/etc/hosts` on every machine that will access the app:
