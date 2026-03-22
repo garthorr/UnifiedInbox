@@ -38,28 +38,33 @@ export interface TodoistSection {
   order: number;
 }
 
+async function fetchAllPages<T>(url: string, label: string): Promise<T[]> {
+  const all: T[] = [];
+  let cursor: string | null = null;
+  do {
+    const pageUrl = cursor ? `${url}${url.includes("?") ? "&" : "?"}cursor=${encodeURIComponent(cursor)}` : url;
+    const res = await fetch(pageUrl, { headers: { Authorization: `Bearer ${apiKey()}` } });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`Todoist ${label} failed ${res.status}: ${text}`);
+    }
+    const data: { results: T[]; next_cursor: string | null; has_more: boolean } = await res.json();
+    all.push(...data.results);
+    cursor = data.has_more ? data.next_cursor : null;
+  } while (cursor);
+  return all;
+}
+
 export async function listProjects(): Promise<TodoistProject[]> {
-  const res = await fetch(`${TODOIST_API}/projects`, {
-    headers: { Authorization: `Bearer ${apiKey()}` },
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Todoist listProjects failed ${res.status}: ${text}`);
-  }
-  const projects: TodoistProject[] = await res.json();
+  const projects = await fetchAllPages<TodoistProject>(`${TODOIST_API}/projects`, "listProjects");
   return projects.sort((a, b) => a.order - b.order);
 }
 
 export async function listSections(projectId: string): Promise<TodoistSection[]> {
-  const res = await fetch(
+  const sections = await fetchAllPages<TodoistSection>(
     `${TODOIST_API}/sections?project_id=${encodeURIComponent(projectId)}`,
-    { headers: { Authorization: `Bearer ${apiKey()}` } }
+    "listSections"
   );
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Todoist listSections failed ${res.status}: ${text}`);
-  }
-  const sections: TodoistSection[] = await res.json();
   return sections.sort((a, b) => a.order - b.order);
 }
 
