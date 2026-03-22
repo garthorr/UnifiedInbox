@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getGmailClient } from "@/lib/gmail/client";
+import { createImapClient } from "@/lib/imap/sync";
+import { simpleParser } from "mailparser";
+
+// ─── MIME helpers (Gmail) ──────────────────────────────────────────────────
 
 type GmailPart = {
   mimeType?: string | null;
@@ -24,43 +28,125 @@ function findBody(part: GmailPart, mimeType: string): string | null {
   return null;
 }
 
+// ─── Gmail handler ─────────────────────────────────────────────────────────
+
+async function getGmailMessages(accountId: string, gmailThreadId: string) {
+  const gmail = await getGmailClient(accountId);
+  const full = await gmail.users.threads.get({
+    userId: "me",
+    id: gmailThreadId,
+    format: "full",
+  });
+
+  return (full.data.messages ?? []).map((msg) => {
+    const headers = msg.payload?.headers ?? [];
+    const h = (name: string) =>
+      headers.find((hh) => hh.name?.toLowerCase() === name.toLowerCase())?.value ?? "";
+
+    const payload = msg.payload as GmailPart | undefined;
+    return {
+      id: msg.id ?? "",
+      from: h("from"),
+      to: h("to"),
+      date: h("date"),
+      snippet: msg.snippet ?? null,
+      html: payload ? findBody(payload, "text/html") : null,
+      text: payload ? findBody(payload, "text/plain") : null,
+    };
+  });
+}
+
+// ─── IMAP handler ──────────────────────────────────────────────────────────
+
+async function getImapMessages(accountId: string, threadId: string) {
+  const account = await prisma.account.findUniqueOrThrow({ where: { id: accountId } });
+
+  // Retrieve UIDs stored in ThreadMirror.historyId (highest UID) plus search
+  const client = createImapClient(account as Parameters<typeof createImapClient>[0]);
+  await client.connect();
+
+  const messages: Array<{
+    id: string;
+    from: string;
+    to: string;
+    date: string;
+    snippet: string | null;
+    html: string | null;
+    text: string | null;
+  }> = [];
+
+  try {
+    const lock = await client.getMailboxLock("INBOX");
+    try {
+      // Search for the root message and all replies by Message-ID / References
+      const bareId = threadId.replace(/[<>]/g, "");
+      const rootUids = (await client.search(
+        { header: ["message-id", `<${bareId}>`] },
+        { uid: true }
+      )) as number[];
+      const replyUids = (await client.search(
+        { header: ["in-reply-to", `<${bareId}>`] },
+        { uid: true }
+      )) as number[];
+
+      const allUids = [...new Set([...rootUids, ...replyUids])].sort((a, b) => a - b);
+      if (allUids.length === 0) return messages;
+
+      for await (const msg of client.fetch(
+        allUids,
+        { uid: true, source: true },
+        { uid: true }
+      )) {
+        const source = msg.source as Buffer;
+        const parsed = await simpleParser(source);
+
+        messages.push({
+          id: String(msg.uid),
+          from: parsed.from?.text ?? "",
+          to: Array.isArray(parsed.to)
+            ? parsed.to.map((a) => a.text).join(", ")
+            : (parsed.to?.text ?? ""),
+          date: parsed.date?.toISOString() ?? "",
+          snippet: (parsed.text ?? "").slice(0, 200) || null,
+          html: parsed.html || null,
+          text: parsed.text || null,
+        });
+      }
+    } finally {
+      lock.release();
+    }
+  } finally {
+    await client.logout().catch(() => {});
+  }
+
+  return messages;
+}
+
+// ─── Route handler ─────────────────────────────────────────────────────────
+
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
 
-  const thread = await prisma.threadMirror.findUnique({ where: { id } });
+  const thread = await prisma.threadMirror.findUnique({
+    where: { id },
+    include: { account: { select: { accountType: true } } },
+  });
   if (!thread) {
     return NextResponse.json({ error: "Thread not found" }, { status: 404 });
   }
 
-  const gmail = await getGmailClient(thread.accountId);
-  const full = await gmail.users.threads.get({
-    userId: "me",
-    id: thread.gmailThreadId,
-    format: "full",
-  });
+  try {
+    const messages =
+      thread.account.accountType === "IMAP"
+        ? await getImapMessages(thread.accountId, thread.gmailThreadId)
+        : await getGmailMessages(thread.accountId, thread.gmailThreadId);
 
-  const messages = (full.data.messages ?? []).map((msg) => {
-    const headers = msg.payload?.headers ?? [];
-    const h = (name: string) =>
-      headers.find((hh) => hh.name?.toLowerCase() === name.toLowerCase())?.value ?? "";
-
-    const payload = msg.payload as GmailPart | undefined;
-    const html = payload ? findBody(payload, "text/html") : null;
-    const text = payload ? findBody(payload, "text/plain") : null;
-
-    return {
-      id: msg.id,
-      from: h("from"),
-      to: h("to"),
-      date: h("date"),
-      snippet: msg.snippet ?? null,
-      html,
-      text,
-    };
-  });
-
-  return NextResponse.json(messages);
+    return NextResponse.json(messages);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Failed to fetch messages";
+    return NextResponse.json({ error: msg }, { status: 502 });
+  }
 }

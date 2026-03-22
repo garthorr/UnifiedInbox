@@ -18,7 +18,10 @@ import {
   Plus,
   LogOut,
   ExternalLink,
+  Server,
 } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { relativeTime } from "@/lib/utils";
 
 interface Account {
@@ -41,6 +44,13 @@ interface SettingsClientProps {
   todoist: TodoistStatus;
 }
 
+const IMAP_DEFAULTS: Record<string, { imap: string; imapPort: number; smtp: string; smtpPort: number }> = {
+  "gmail.com": { imap: "imap.gmail.com", imapPort: 993, smtp: "smtp.gmail.com", smtpPort: 587 },
+  "outlook.com": { imap: "outlook.office365.com", imapPort: 993, smtp: "smtp.office365.com", smtpPort: 587 },
+  "hotmail.com": { imap: "outlook.office365.com", imapPort: 993, smtp: "smtp.office365.com", smtpPort: 587 },
+  "yahoo.com": { imap: "imap.mail.yahoo.com", imapPort: 993, smtp: "smtp.mail.yahoo.com", smtpPort: 587 },
+};
+
 export function SettingsClient({ accounts: initialAccounts, todoist }: SettingsClientProps) {
   const router = useRouter();
   const [accounts, setAccounts] = useState(initialAccounts);
@@ -48,6 +58,62 @@ export function SettingsClient({ accounts: initialAccounts, todoist }: SettingsC
   const [removing, setRemoving] = useState<string | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<Account | null>(null);
   const [loggingOut, setLoggingOut] = useState(false);
+
+  // IMAP connect form
+  const [imapOpen, setImapOpen] = useState(false);
+  const [imapEmail, setImapEmail] = useState("");
+  const [imapPassword, setImapPassword] = useState("");
+  const [imapHost, setImapHost] = useState("");
+  const [imapPort, setImapPort] = useState("993");
+  const [smtpHost, setSmtpHost] = useState("");
+  const [smtpPort, setSmtpPort] = useState("587");
+  const [imapError, setImapError] = useState("");
+  const [imapLoading, setImapLoading] = useState(false);
+
+  function handleImapEmailChange(email: string) {
+    setImapEmail(email);
+    const domain = email.split("@")[1]?.toLowerCase() ?? "";
+    const def = IMAP_DEFAULTS[domain];
+    if (def) {
+      setImapHost(def.imap);
+      setImapPort(String(def.imapPort));
+      setSmtpHost(def.smtp);
+      setSmtpPort(String(def.smtpPort));
+    }
+  }
+
+  async function handleImapConnect() {
+    if (!imapEmail || !imapPassword || !imapHost) {
+      setImapError("Email, password, and IMAP host are required.");
+      return;
+    }
+    setImapLoading(true);
+    setImapError("");
+    try {
+      const res = await fetch("/api/accounts/imap", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: imapEmail,
+          password: imapPassword,
+          imapHost,
+          imapPort: parseInt(imapPort) || 993,
+          smtpHost: smtpHost || undefined,
+          smtpPort: parseInt(smtpPort) || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed to connect");
+      setImapOpen(false);
+      setImapEmail(""); setImapPassword(""); setImapHost("");
+      setImapPort("993"); setSmtpHost(""); setSmtpPort("587");
+      router.refresh();
+    } catch (err) {
+      setImapError(err instanceof Error ? err.message : "Connection failed");
+    } finally {
+      setImapLoading(false);
+    }
+  }
 
   async function syncAccount(id: string) {
     setSyncing(id);
@@ -174,14 +240,106 @@ export function SettingsClient({ accounts: initialAccounts, todoist }: SettingsC
             ))}
           </div>
 
-          <div className="mt-3">
+          <div className="mt-3 flex gap-2 flex-wrap">
             <a href="/api/auth/connect">
               <Button variant="outline" size="sm" className="h-8 text-xs gap-1">
                 <Plus className="h-3 w-3" />
                 Connect Google Account
               </Button>
             </a>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 text-xs gap-1"
+              onClick={() => setImapOpen(true)}
+            >
+              <Server className="h-3 w-3" />
+              Connect via IMAP
+            </Button>
           </div>
+
+          {/* IMAP connect dialog */}
+          <Dialog open={imapOpen} onOpenChange={setImapOpen}>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle>Connect IMAP Account</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-3 py-1">
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Email address</Label>
+                  <Input
+                    type="email"
+                    placeholder="you@example.com"
+                    value={imapEmail}
+                    onChange={(e) => handleImapEmailChange(e.target.value)}
+                    className="h-8 text-sm"
+                    autoFocus
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Password / App password</Label>
+                  <Input
+                    type="password"
+                    placeholder="••••••••"
+                    value={imapPassword}
+                    onChange={(e) => setImapPassword(e.target.value)}
+                    className="h-8 text-sm"
+                  />
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="col-span-2 space-y-1.5">
+                    <Label className="text-xs">IMAP host</Label>
+                    <Input
+                      placeholder="imap.example.com"
+                      value={imapHost}
+                      onChange={(e) => setImapHost(e.target.value)}
+                      className="h-8 text-sm"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Port</Label>
+                    <Input
+                      placeholder="993"
+                      value={imapPort}
+                      onChange={(e) => setImapPort(e.target.value)}
+                      className="h-8 text-sm"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="col-span-2 space-y-1.5">
+                    <Label className="text-xs">
+                      SMTP host <span className="font-normal text-slate-400">(optional)</span>
+                    </Label>
+                    <Input
+                      placeholder="smtp.example.com"
+                      value={smtpHost}
+                      onChange={(e) => setSmtpHost(e.target.value)}
+                      className="h-8 text-sm"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Port</Label>
+                    <Input
+                      placeholder="587"
+                      value={smtpPort}
+                      onChange={(e) => setSmtpPort(e.target.value)}
+                      className="h-8 text-sm"
+                    />
+                  </div>
+                </div>
+                {imapError && <p className="text-xs text-red-500">{imapError}</p>}
+              </div>
+              <DialogFooter>
+                <Button variant="ghost" size="sm" onClick={() => setImapOpen(false)} disabled={imapLoading}>
+                  Cancel
+                </Button>
+                <Button size="sm" onClick={handleImapConnect} disabled={imapLoading}>
+                  {imapLoading ? "Connecting…" : "Connect"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </section>
 
         {/* Todoist integration */}

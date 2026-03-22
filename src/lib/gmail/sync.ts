@@ -339,10 +339,21 @@ export async function syncAccount(accountId: string): Promise<void> {
   if (!account || !account.isActive) return;
 
   try {
-    if (!account.historyId) {
-      await initialSync(accountId);
+    if (account.accountType === "IMAP") {
+      const { initialSync: imapInitial, incrementalSync: imapIncremental } =
+        await import("@/lib/imap/sync");
+      const isFirstSync = !account.historyId || account.historyId === "uid:0";
+      if (isFirstSync) {
+        await imapInitial(accountId);
+      } else {
+        await imapIncremental(accountId);
+      }
     } else {
-      await incrementalSync(accountId);
+      if (!account.historyId) {
+        await initialSync(accountId);
+      } else {
+        await incrementalSync(accountId);
+      }
     }
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
@@ -351,7 +362,9 @@ export async function syncAccount(accountId: string): Promise<void> {
       message.includes("invalid_grant") ||
       message.includes("Insufficient Permission") ||
       message.includes("insufficientPermissions") ||
-      message.includes("403");
+      message.includes("403") ||
+      message.includes("Authentication failed") ||
+      message.includes("AUTHENTICATIONFAILED");
 
     if (isAuthError) {
       await prisma.account.update({

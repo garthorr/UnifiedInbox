@@ -54,14 +54,19 @@ enum ActivityEventType {
 
 model Account {
   id              String    @id @default(uuid())
+  accountType     String    @default("GMAIL")   // "GMAIL" | "IMAP"
   email           String    @unique
   displayName     String
-  accessToken     String    // encrypted at rest
-  refreshToken    String    // encrypted at rest
-  tokenExpiresAt  DateTime
+  accessToken     String    // encrypted; for IMAP this is the password
+  refreshToken    String?   // encrypted; null for IMAP accounts
+  tokenExpiresAt  DateTime? // null for IMAP accounts
   isActive        Boolean   @default(true)
   lastSyncAt      DateTime?
-  historyId       String?   // Gmail history ID for incremental sync
+  historyId       String?   // Gmail history ID or "uid:<n>" for IMAP
+  imapHost        String?
+  imapPort        Int?
+  smtpHost        String?
+  smtpPort        Int?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
@@ -82,7 +87,7 @@ model ThreadMirror {
   isUnread              Boolean   @default(false)
   lastMessageAt         DateTime
   firstMessageAt        DateTime
-  historyId             String
+  historyId             String?
   syncedAt              DateTime  @default(now())
   isStale               Boolean   @default(false)
   workItemId            String?
