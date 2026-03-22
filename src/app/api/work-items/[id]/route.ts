@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { closeTask, isConfigured } from "@/lib/todoist";
 import type { WorkItemStatus } from "@prisma/client";
 
 const VALID_STATUSES: WorkItemStatus[] = [
@@ -70,7 +71,10 @@ export async function PATCH(
     checklist?: Array<{ text: string; done: boolean }>;
   };
 
-  const existing = await prisma.workItem.findUnique({ where: { id } });
+  const existing = await prisma.workItem.findUnique({
+    where: { id },
+    include: { taskLinks: { where: { provider: "TODOIST" } } },
+  });
   if (!existing) {
     return NextResponse.json({ error: "Work item not found" }, { status: 404 });
   }
@@ -97,7 +101,7 @@ export async function PATCH(
     },
   });
 
-  // Log status change separately
+  // Log status change separately; close Todoist task if marking DONE
   if (status && status !== existing.status) {
     await prisma.activityLog.create({
       data: {
@@ -107,6 +111,20 @@ export async function PATCH(
         metadata: { from: existing.status, to: status },
       },
     });
+    if (status === "DONE" && isConfigured()) {
+      const todoistLink = existing.taskLinks?.[0];
+      if (todoistLink) {
+        try {
+          await closeTask(todoistLink.externalId);
+          await prisma.taskLink.update({
+            where: { id: todoistLink.id },
+            data: { externalStatus: "completed", lastSyncAt: new Date() },
+          });
+        } catch (err) {
+          console.error("[todoist] closeTask failed:", err);
+        }
+      }
+    }
   } else if (Object.keys(body).length > 0) {
     await prisma.activityLog.create({
       data: {

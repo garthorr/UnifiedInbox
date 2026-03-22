@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { prisma } from "@/lib/db";
+import { isConfigured as todoistConfigured } from "@/lib/todoist";
 import { AppShell } from "@/components/layout/AppShell";
 import { WorkItemDetail } from "@/components/work-items/WorkItemDetail";
 import { Button } from "@/components/ui/button";
@@ -25,6 +26,7 @@ export default async function WorkItemPage({ params }: PageProps) {
             account: { select: { id: true, email: true, displayName: true } },
           },
         },
+        taskLinks: true,
         activityLogs: {
           orderBy: { createdAt: "desc" },
           take: 30,
@@ -67,6 +69,11 @@ export default async function WorkItemPage({ params }: PageProps) {
                 ...t,
                 lastMessageAt: t.lastMessageAt.toISOString(),
               })),
+              taskLinks: workItem.taskLinks.map((tl) => ({
+                ...tl,
+                exportedAt: tl.exportedAt?.toISOString() ?? null,
+                lastSyncAt: tl.lastSyncAt?.toISOString() ?? null,
+              })),
               activityLogs: workItem.activityLogs.map((log) => ({
                 ...log,
                 createdAt: log.createdAt.toISOString(),
@@ -75,6 +82,7 @@ export default async function WorkItemPage({ params }: PageProps) {
               dueDate: workItem.dueDate?.toISOString() ?? null,
             }}
             allDomains={allDomains}
+            todoistEnabled={todoistConfigured()}
           />
         </div>
       </div>
