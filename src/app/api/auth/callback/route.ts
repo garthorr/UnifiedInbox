@@ -12,15 +12,17 @@ export async function GET(request: Request) {
   const state = searchParams.get("state");
   const error = searchParams.get("error");
 
+  const appUrl = process.env.APP_URL || new URL(request.url).origin;
+
   if (error) {
     return NextResponse.redirect(
-      new URL(`/settings?error=${encodeURIComponent(error)}`, request.url)
+      new URL(`/settings?error=${encodeURIComponent(error)}`, appUrl)
     );
   }
 
   if (!code || !state) {
     return NextResponse.redirect(
-      new URL("/settings?error=missing_params", request.url)
+      new URL("/settings?error=missing_params", appUrl)
     );
   }
 
@@ -29,7 +31,7 @@ export async function GET(request: Request) {
   const storedState = cookieStore.get(STATE_COOKIE)?.value;
   if (!storedState || storedState !== state) {
     return NextResponse.redirect(
-      new URL("/settings?error=invalid_state", request.url)
+      new URL("/settings?error=invalid_state", appUrl)
     );
   }
 
@@ -73,7 +75,7 @@ export async function GET(request: Request) {
     });
 
     const response = NextResponse.redirect(
-      new URL("/settings?connected=1", request.url)
+      new URL("/settings?connected=1", appUrl)
     );
     // Clear the state cookie
     response.cookies.set(STATE_COOKIE, "", { maxAge: 0, path: "/" });
@@ -81,7 +83,7 @@ export async function GET(request: Request) {
   } catch (err) {
     console.error("OAuth callback error:", err);
     return NextResponse.redirect(
-      new URL("/settings?error=oauth_failed", request.url)
+      new URL("/settings?error=oauth_failed", appUrl)
     );
   }
 }
