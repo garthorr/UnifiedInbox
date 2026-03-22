@@ -18,9 +18,10 @@ interface Thread {
 
 interface ThreadListProps {
   threads: Thread[];
+  todoistEnabled?: boolean;
 }
 
-export function ThreadList({ threads }: ThreadListProps) {
+export function ThreadList({ threads, todoistEnabled = false }: ThreadListProps) {
   if (threads.length === 0) {
     return (
       <div className="py-16 text-center text-sm text-slate-400">
@@ -32,7 +33,7 @@ export function ThreadList({ threads }: ThreadListProps) {
   return (
     <div className="divide-y divide-slate-100">
       {threads.map((thread) => (
-        <ThreadCard key={thread.id} thread={thread} />
+        <ThreadCard key={thread.id} thread={thread} todoistEnabled={todoistEnabled} />
       ))}
     </div>
   );

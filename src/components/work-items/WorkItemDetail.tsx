@@ -484,6 +484,18 @@ export function WorkItemDetail({ workItem, allDomains, todoistEnabled }: WorkIte
                             <Loader2 className="h-3.5 w-3.5 animate-spin" />
                             Loading projects…
                           </div>
+                        ) : projects.length === 0 ? (
+                          <div className="rounded-md border px-3 py-4 text-center">
+                            <p className="text-xs text-slate-400">
+                              {todoistError ? todoistError : "No projects found"}
+                            </p>
+                            <button
+                              className="mt-2 text-xs text-blue-500 hover:underline"
+                              onClick={() => { setTodoistError(""); fetchProjects(); }}
+                            >
+                              Retry
+                            </button>
+                          </div>
                         ) : (
                           <div className="max-h-52 overflow-y-auto rounded-md border divide-y">
                             {projects.map((p) => (
@@ -552,7 +564,7 @@ export function WorkItemDetail({ workItem, allDomains, todoistEnabled }: WorkIte
                         </div>
                       )}
 
-                      {todoistError && (
+                      {todoistError && projects.length > 0 && (
                         <p className="text-xs text-red-500">{todoistError}</p>
                       )}
 

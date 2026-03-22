@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { prisma } from "@/lib/db";
+import { isConfigured as todoistConfigured } from "@/lib/todoist";
 import { AppShell } from "@/components/layout/AppShell";
 import { InboxFilters } from "@/components/inbox/InboxFilters";
 import { ThreadList } from "@/components/inbox/ThreadList";
@@ -51,7 +52,7 @@ async function InboxContent({ searchParams }: PageProps) {
         </span>
       </div>
       <div className="flex-1 overflow-y-auto">
-        <ThreadList threads={threads} />
+        <ThreadList threads={threads} todoistEnabled={todoistConfigured()} />
       </div>
     </div>
   );

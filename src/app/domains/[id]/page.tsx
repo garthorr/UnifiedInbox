@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { prisma } from "@/lib/db";
+import { isConfigured as todoistConfigured } from "@/lib/todoist";
 import { AppShell } from "@/components/layout/AppShell";
 import { WorkItemCard } from "@/components/work-items/WorkItemCard";
 import { ThreadCard } from "@/components/inbox/ThreadCard";
@@ -111,7 +112,7 @@ export default async function DomainPage({ params }: PageProps) {
               </h2>
               <div className="rounded-lg border bg-white overflow-hidden">
                 {unlinkedThreads.map((thread) => (
-                  <ThreadCard key={thread.id} thread={thread} />
+                  <ThreadCard key={thread.id} thread={thread} todoistEnabled={todoistConfigured()} />
                 ))}
               </div>
             </section>

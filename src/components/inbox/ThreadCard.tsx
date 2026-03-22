@@ -25,9 +25,10 @@ interface ThreadCardProps {
     domain: { id: string; name: string; color: string } | null;
     workItem: { id: string; title: string; status: string } | null;
   };
+  todoistEnabled?: boolean;
 }
 
-export function ThreadCard({ thread }: ThreadCardProps) {
+export function ThreadCard({ thread, todoistEnabled = false }: ThreadCardProps) {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const sender = parseEmailDisplay(
     primarySender(thread.participantAddresses, thread.account.email)
@@ -122,6 +123,7 @@ export function ThreadCard({ thread }: ThreadCardProps) {
       {showCreateModal && (
         <CreateWorkItemModal
           thread={thread}
+          todoistEnabled={todoistEnabled}
           onClose={() => setShowCreateModal(false)}
         />
       )}
