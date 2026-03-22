@@ -347,7 +347,11 @@ export async function syncAccount(accountId: string): Promise<void> {
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     const isAuthError =
-      message.includes("401") || message.includes("invalid_grant");
+      message.includes("401") ||
+      message.includes("invalid_grant") ||
+      message.includes("Insufficient Permission") ||
+      message.includes("insufficientPermissions") ||
+      message.includes("403");
 
     if (isAuthError) {
       await prisma.account.update({

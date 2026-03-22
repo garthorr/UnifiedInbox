@@ -9,6 +9,12 @@ export default async function SettingsPage() {
       orderBy: { createdAt: "asc" },
       include: {
         _count: { select: { threads: true } },
+        activityLogs: {
+          where: { eventType: "ACCOUNT_SYNC_FAILED" },
+          orderBy: { createdAt: "desc" },
+          take: 1,
+          select: { description: true },
+        },
       },
     }),
     todoistConfigured()
@@ -26,6 +32,7 @@ export default async function SettingsPage() {
           isActive: a.isActive,
           lastSyncAt: a.lastSyncAt?.toISOString() ?? null,
           threadCount: a._count.threads,
+          lastSyncError: a.activityLogs[0]?.description ?? null,
         }))}
         todoist={{ configured: todoistConfigured(), taskCount: todoistTaskCount }}
       />

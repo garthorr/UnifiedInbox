@@ -28,6 +28,7 @@ interface Account {
   isActive: boolean;
   lastSyncAt: string | null;
   threadCount: number;
+  lastSyncError: string | null;
 }
 
 interface TodoistStatus {
@@ -133,11 +134,18 @@ export function SettingsClient({ accounts: initialAccounts, todoist }: SettingsC
                       ? ` · Last sync ${relativeTime(account.lastSyncAt)}`
                       : " · Never synced"}
                   </p>
-                  {!account.isActive && (
-                    <p className="text-xs text-red-500 mt-0.5">
-                      Account disconnected — re-authenticate to resume sync
-                    </p>
-                  )}
+                  {!account.isActive && (() => {
+                    const isPermission =
+                      account.lastSyncError?.includes("Insufficient Permission") ||
+                      account.lastSyncError?.includes("403");
+                    return (
+                      <p className="text-xs text-red-500 mt-0.5">
+                        {isPermission
+                          ? "Sync blocked — a Google Workspace admin must grant this app access to Gmail before this account can sync."
+                          : "Account disconnected — re-authenticate to resume sync."}
+                      </p>
+                    );
+                  })()}
                 </div>
                 <div className="flex items-center gap-1 flex-shrink-0">
                   <Button
