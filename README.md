@@ -50,11 +50,30 @@ Edit `.env`:
 ```env
 GOOGLE_CLIENT_ID=your_client_id
 GOOGLE_CLIENT_SECRET=your_client_secret
-GOOGLE_REDIRECT_URI=http://<your-host>:3000/api/auth/callback
+GOOGLE_REDIRECT_URI=http://inbox.yourdomain.com:3000/api/auth/callback
 ENCRYPTION_KEY=$(openssl rand -hex 32)
 APP_SECRET=any_strong_password
-APP_URL=http://<your-host>:3000
+APP_URL=http://inbox.yourdomain.com:3000
 ```
+
+> **Google OAuth does not accept bare IP addresses** (e.g. `192.168.1.x` or Tailscale IPs) as
+> redirect URIs. Use a real hostname — it can safely resolve to a private/LAN IP.
+>
+> **Option A — subdomain you already own (recommended):**
+> Add a DNS `A` record pointing a subdomain to your private IP:
+> ```
+> inbox.yourdomain.com  →  192.168.1.x   # or your Tailscale IP
+> ```
+> The app will not be reachable from the internet as long as the IP is private.
+>
+> **Option B — local `/etc/hosts` alias (no DNS required):**
+> Add this line to `/etc/hosts` on every machine that will access the app:
+> ```
+> 192.168.1.x  inbox.local
+> ```
+> Then use `http://inbox.local:3000` for both `APP_URL` and `GOOGLE_REDIRECT_URI`.
+> Also add `http://inbox.local:3000/api/auth/callback` as an authorized redirect URI in Google
+> Cloud Console.
 
 ### 2. Build and run
 
