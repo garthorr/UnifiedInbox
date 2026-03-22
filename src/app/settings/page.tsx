@@ -1,14 +1,20 @@
 import { prisma } from "@/lib/db";
+import { isConfigured as todoistConfigured } from "@/lib/todoist";
 import { AppShell } from "@/components/layout/AppShell";
 import { SettingsClient } from "./SettingsClient";
 
 export default async function SettingsPage() {
-  const accounts = await prisma.account.findMany({
-    orderBy: { createdAt: "asc" },
-    include: {
-      _count: { select: { threads: true } },
-    },
-  });
+  const [accounts, todoistTaskCount] = await Promise.all([
+    prisma.account.findMany({
+      orderBy: { createdAt: "asc" },
+      include: {
+        _count: { select: { threads: true } },
+      },
+    }),
+    todoistConfigured()
+      ? prisma.taskLink.count({ where: { provider: "TODOIST" } })
+      : Promise.resolve(0),
+  ]);
 
   return (
     <AppShell>
@@ -21,6 +27,7 @@ export default async function SettingsPage() {
           lastSyncAt: a.lastSyncAt?.toISOString() ?? null,
           threadCount: a._count.threads,
         }))}
+        todoist={{ configured: todoistConfigured(), taskCount: todoistTaskCount }}
       />
     </AppShell>
   );

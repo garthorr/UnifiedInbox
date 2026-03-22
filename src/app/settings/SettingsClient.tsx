@@ -17,6 +17,7 @@ import {
   Trash2,
   Plus,
   LogOut,
+  ExternalLink,
 } from "lucide-react";
 import { relativeTime } from "@/lib/utils";
 
@@ -29,11 +30,17 @@ interface Account {
   threadCount: number;
 }
 
-interface SettingsClientProps {
-  accounts: Account[];
+interface TodoistStatus {
+  configured: boolean;
+  taskCount: number;
 }
 
-export function SettingsClient({ accounts: initialAccounts }: SettingsClientProps) {
+interface SettingsClientProps {
+  accounts: Account[];
+  todoist: TodoistStatus;
+}
+
+export function SettingsClient({ accounts: initialAccounts, todoist }: SettingsClientProps) {
   const router = useRouter();
   const [accounts, setAccounts] = useState(initialAccounts);
   const [syncing, setSyncing] = useState<string | null>(null);
@@ -166,6 +173,52 @@ export function SettingsClient({ accounts: initialAccounts }: SettingsClientProp
                 Connect Google Account
               </Button>
             </a>
+          </div>
+        </section>
+
+        {/* Todoist integration */}
+        <section>
+          <h2 className="text-sm font-semibold text-slate-700 mb-3">
+            Integrations
+          </h2>
+          <div className="rounded-lg border bg-white px-4 py-3 flex items-start gap-3">
+            <div className="mt-0.5 flex-shrink-0">
+              {todoist.configured ? (
+                <CheckCircle className="h-4 w-4 text-green-500" />
+              ) : (
+                <AlertCircle className="h-4 w-4 text-slate-300" />
+              )}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-slate-800">Todoist</p>
+              {todoist.configured ? (
+                <p className="text-xs text-slate-500">
+                  Connected · {todoist.taskCount.toLocaleString()} task
+                  {todoist.taskCount !== 1 ? "s" : ""} linked
+                </p>
+              ) : (
+                <p className="text-xs text-slate-500">
+                  Not configured. Set the{" "}
+                  <code className="font-mono bg-slate-100 px-1 rounded">
+                    TODOIST_API_KEY
+                  </code>{" "}
+                  environment variable to enable Todoist integration.
+                </p>
+              )}
+            </div>
+            {!todoist.configured && (
+              <a
+                href="https://app.todoist.com/app/settings/integrations/developer"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex-shrink-0"
+              >
+                <Button variant="outline" size="sm" className="h-7 text-xs gap-1">
+                  <ExternalLink className="h-3 w-3" />
+                  Get API token
+                </Button>
+              </a>
+            )}
           </div>
         </section>
       </div>
