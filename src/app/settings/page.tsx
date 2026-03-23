@@ -4,7 +4,7 @@ import { AppShell } from "@/components/layout/AppShell";
 import { SettingsClient } from "./SettingsClient";
 
 export default async function SettingsPage() {
-  const [accounts, todoistTaskCount] = await Promise.all([
+  const [accounts, todoistTaskCount, domains] = await Promise.all([
     prisma.account.findMany({
       orderBy: { createdAt: "asc" },
       include: {
@@ -20,6 +20,10 @@ export default async function SettingsPage() {
     todoistConfigured()
       ? prisma.taskLink.count({ where: { provider: "TODOIST" } })
       : Promise.resolve(0),
+    prisma.domain.findMany({
+      orderBy: { sortOrder: "asc" },
+      include: { _count: { select: { workItems: true } } },
+    }),
   ]);
 
   return (
@@ -35,6 +39,15 @@ export default async function SettingsPage() {
           lastSyncError: a.activityLogs[0]?.description ?? null,
         }))}
         todoist={{ configured: todoistConfigured(), taskCount: todoistTaskCount }}
+        domains={domains.map((d) => ({
+          id: d.id,
+          name: d.name,
+          color: d.color,
+          description: d.description,
+          isActive: d.isActive,
+          sortOrder: d.sortOrder,
+          workItemCount: d._count.workItems,
+        }))}
       />
     </AppShell>
   );

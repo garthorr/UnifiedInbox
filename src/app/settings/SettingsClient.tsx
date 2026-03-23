@@ -34,6 +34,16 @@ interface Account {
   lastSyncError: string | null;
 }
 
+interface Domain {
+  id: string;
+  name: string;
+  color: string;
+  description: string | null;
+  isActive: boolean;
+  sortOrder: number;
+  workItemCount: number;
+}
+
 interface TodoistStatus {
   configured: boolean;
   taskCount: number;
@@ -42,6 +52,7 @@ interface TodoistStatus {
 interface SettingsClientProps {
   accounts: Account[];
   todoist: TodoistStatus;
+  domains: Domain[];
 }
 
 const IMAP_DEFAULTS: Record<string, { imap: string; imapPort: number; smtp: string; smtpPort: number }> = {
@@ -51,9 +62,10 @@ const IMAP_DEFAULTS: Record<string, { imap: string; imapPort: number; smtp: stri
   "yahoo.com": { imap: "imap.mail.yahoo.com", imapPort: 993, smtp: "smtp.mail.yahoo.com", smtpPort: 587 },
 };
 
-export function SettingsClient({ accounts: initialAccounts, todoist }: SettingsClientProps) {
+export function SettingsClient({ accounts: initialAccounts, todoist, domains: initialDomains }: SettingsClientProps) {
   const router = useRouter();
   const [accounts, setAccounts] = useState(initialAccounts);
+  const [domains, setDomains] = useState(initialDomains);
   const [syncing, setSyncing] = useState<string | null>(null);
   const [removing, setRemoving] = useState<string | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<Account | null>(null);
@@ -112,6 +124,69 @@ export function SettingsClient({ accounts: initialAccounts, todoist }: SettingsC
       setImapError(err instanceof Error ? err.message : "Connection failed");
     } finally {
       setImapLoading(false);
+    }
+  }
+
+  // Domain state
+  const [newDomainName, setNewDomainName] = useState("");
+  const [newDomainColor, setNewDomainColor] = useState("#6366f1");
+  const [addingDomain, setAddingDomain] = useState(false);
+  const [domainError, setDomainError] = useState("");
+  const [editingDomain, setEditingDomain] = useState<Domain | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editColor, setEditColor] = useState("");
+  const [deletingDomain, setDeletingDomain] = useState<string | null>(null);
+
+  async function createDomain() {
+    if (!newDomainName.trim()) return;
+    setDomainError("");
+    try {
+      const res = await fetch("/api/domains", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newDomainName.trim(), color: newDomainColor }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed to create domain");
+      setDomains((prev) => [...prev, { ...data, workItemCount: 0 }]);
+      setNewDomainName("");
+      setNewDomainColor("#6366f1");
+    } catch (err) {
+      setDomainError(err instanceof Error ? err.message : "Failed to create domain");
+    }
+  }
+
+  async function saveDomain() {
+    if (!editingDomain || !editName.trim()) return;
+    setDomainError("");
+    try {
+      const res = await fetch(`/api/domains/${editingDomain.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: editName.trim(), color: editColor }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed to update domain");
+      setDomains((prev) => prev.map((d) => (d.id === editingDomain.id ? { ...d, name: data.name, color: data.color } : d)));
+      setEditingDomain(null);
+    } catch (err) {
+      setDomainError(err instanceof Error ? err.message : "Failed to update domain");
+    }
+  }
+
+  async function deleteDomain(id: string) {
+    setDeletingDomain(id);
+    setDomainError("");
+    try {
+      const res = await fetch(`/api/domains/${id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed to delete domain");
+      setDomains((prev) => prev.filter((d) => d.id !== id));
+      router.refresh();
+    } catch (err) {
+      setDomainError(err instanceof Error ? err.message : "Failed to delete domain");
+    } finally {
+      setDeletingDomain(null);
     }
   }
 
@@ -340,6 +415,82 @@ export function SettingsClient({ accounts: initialAccounts, todoist }: SettingsC
               </DialogFooter>
             </DialogContent>
           </Dialog>
+        </section>
+
+        {/* Domains */}
+        <section>
+          <h2 className="text-sm font-semibold text-slate-700 mb-3">Domains</h2>
+          <div className="space-y-1">
+            {domains.map((domain) =>
+              editingDomain?.id === domain.id ? (
+                <div key={domain.id} className="flex items-center gap-2 py-1">
+                  <input
+                    type="color"
+                    value={editColor}
+                    onChange={(e) => setEditColor(e.target.value)}
+                    className="h-7 w-8 cursor-pointer rounded border border-slate-200 p-0.5"
+                  />
+                  <Input
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    className="h-7 text-sm flex-1"
+                    onKeyDown={(e) => { if (e.key === "Enter") saveDomain(); if (e.key === "Escape") setEditingDomain(null); }}
+                    autoFocus
+                  />
+                  <Button size="sm" className="h-7 text-xs" onClick={saveDomain}>Save</Button>
+                  <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setEditingDomain(null)}>Cancel</Button>
+                </div>
+              ) : (
+                <div key={domain.id} className="flex items-center gap-2 py-1 group">
+                  <span className="h-3 w-3 rounded-full flex-shrink-0" style={{ backgroundColor: domain.color }} />
+                  <span className="text-sm flex-1">{domain.name}</span>
+                  <span className="text-xs text-slate-400">{domain.workItemCount} work item{domain.workItemCount !== 1 ? "s" : ""}</span>
+                  <Button
+                    variant="ghost" size="sm"
+                    className="h-6 text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+                    onClick={() => { setEditingDomain(domain); setEditName(domain.name); setEditColor(domain.color); setDomainError(""); }}
+                  >
+                    Edit
+                  </Button>
+                  <Button
+                    variant="ghost" size="sm"
+                    className="h-6 text-xs text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                    disabled={deletingDomain === domain.id}
+                    onClick={() => deleteDomain(domain.id)}
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
+                </div>
+              )
+            )}
+          </div>
+
+          {/* Add domain row */}
+          <div className="flex items-center gap-2 mt-3">
+            <input
+              type="color"
+              value={newDomainColor}
+              onChange={(e) => setNewDomainColor(e.target.value)}
+              className="h-7 w-8 cursor-pointer rounded border border-slate-200 p-0.5"
+            />
+            <Input
+              placeholder="New domain name…"
+              value={newDomainName}
+              onChange={(e) => setNewDomainName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") createDomain(); }}
+              className="h-7 text-sm flex-1"
+            />
+            <Button
+              size="sm" variant="outline"
+              className="h-7 text-xs gap-1"
+              disabled={!newDomainName.trim() || addingDomain}
+              onClick={createDomain}
+            >
+              <Plus className="h-3 w-3" />
+              Add
+            </Button>
+          </div>
+          {domainError && <p className="mt-1.5 text-xs text-red-500">{domainError}</p>}
         </section>
 
         {/* Todoist integration */}
