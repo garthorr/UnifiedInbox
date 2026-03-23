@@ -281,13 +281,21 @@ export function SettingsClient({ accounts: initialAccounts, todoist, domains: in
                   {!account.isActive && (() => {
                     const isPermission =
                       account.lastSyncError?.includes("Insufficient Permission") ||
+                      account.lastSyncError?.includes("insufficientPermissions") ||
                       account.lastSyncError?.includes("403");
+                    const isPersonalGmail = account.email.endsWith("@gmail.com");
+                    let errorMsg: string;
+                    if (isPermission && !isPersonalGmail) {
+                      errorMsg =
+                        "Sync blocked — a Google Workspace admin must authorize this app for your organization before it can access Gmail.";
+                    } else if (isPermission && isPersonalGmail) {
+                      errorMsg =
+                        "Gmail access denied — remove this account and reconnect, making sure to allow Gmail access when prompted.";
+                    } else {
+                      errorMsg = "Account disconnected — remove and reconnect to resume sync.";
+                    }
                     return (
-                      <p className="text-xs text-red-500 mt-0.5">
-                        {isPermission
-                          ? "Sync blocked — a Google Workspace admin must grant this app access to Gmail before this account can sync."
-                          : "Account disconnected — re-authenticate to resume sync."}
-                      </p>
+                      <p className="text-xs text-red-500 mt-0.5">{errorMsg}</p>
                     );
                   })()}
                 </div>
