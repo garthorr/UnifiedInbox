@@ -11,12 +11,15 @@ interface PageProps {
     accountId?: string;
     isUnread?: string;
     days?: string;
+    q?: string;
+    view?: string;
   }>;
 }
 
 async function InboxContent({ searchParams }: PageProps) {
   const params = await searchParams;
-  const days = parseInt(params.days ?? "7");
+  const q = params.q?.trim() ?? "";
+  const days = q ? 90 : parseInt(params.days ?? "7");
   const afterDate = new Date();
   afterDate.setDate(afterDate.getDate() - days);
 
@@ -32,6 +35,14 @@ async function InboxContent({ searchParams }: PageProps) {
         lastMessageAt: { gte: afterDate },
         ...(params.accountId ? { accountId: params.accountId } : {}),
         ...(params.isUnread === "true" ? { isUnread: true } : {}),
+        ...(q
+          ? {
+              OR: [
+                { subject: { contains: q, mode: "insensitive" } },
+                { snippet: { contains: q, mode: "insensitive" } },
+              ],
+            }
+          : {}),
       },
       orderBy: { lastMessageAt: "desc" },
       take: 100,

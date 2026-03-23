@@ -134,6 +134,10 @@ export function WorkItemDetail({ workItem, allDomains, todoistEnabled }: WorkIte
   const [domainId, setDomainId] = useState(workItem.domainId ?? "");
   const [showAttachModal, setShowAttachModal] = useState(false);
   const [detaching, setDetaching] = useState<string | null>(null);
+  const [dueDate, setDueDate] = useState(
+    workItem.dueDate ? new Date(workItem.dueDate).toISOString().slice(0, 10) : ""
+  );
+  const [editingDueDate, setEditingDueDate] = useState(false);
   const [saving, setSaving] = useState(false);
   const [todoistLoading, setTodoistLoading] = useState(false);
   const [todoistError, setTodoistError] = useState("");
@@ -219,6 +223,11 @@ export function WorkItemDetail({ workItem, allDomains, todoistEnabled }: WorkIte
   async function saveNotes() {
     setEditingNotes(false);
     await patch({ notes });
+  }
+
+  async function saveDueDate() {
+    setEditingDueDate(false);
+    await patch({ dueDate: dueDate || null });
   }
 
   async function toggleCheckItem(index: number) {
@@ -363,11 +372,40 @@ export function WorkItemDetail({ workItem, allDomains, todoistEnabled }: WorkIte
               </SelectContent>
             </Select>
 
-            {workItem.dueDate && (
-              <span className="flex items-center gap-1 text-xs text-amber-600">
+            {editingDueDate ? (
+              <div className="flex items-center gap-1">
+                <Input
+                  type="date"
+                  value={dueDate}
+                  onChange={(e) => setDueDate(e.target.value)}
+                  className="h-6 text-xs w-36 px-1.5"
+                  autoFocus
+                />
+                <Button size="sm" className="h-6 text-xs px-2" onClick={saveDueDate}>
+                  Save
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-6 text-xs px-2"
+                  onClick={() => {
+                    setDueDate(workItem.dueDate ? new Date(workItem.dueDate).toISOString().slice(0, 10) : "");
+                    setEditingDueDate(false);
+                  }}
+                >
+                  Cancel
+                </Button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setEditingDueDate(true)}
+                className={`flex items-center gap-1 text-xs rounded px-1 -ml-1 hover:bg-slate-100 transition-colors ${
+                  dueDate ? "text-amber-600" : "text-slate-400"
+                }`}
+              >
                 <Calendar className="h-3 w-3" />
-                Due {formatDate(workItem.dueDate)}
-              </span>
+                {dueDate ? `Due ${formatDate(dueDate)}` : "Set due date"}
+              </button>
             )}
 
             {saving && <span className="text-xs text-slate-400">Saving...</span>}

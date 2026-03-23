@@ -117,7 +117,7 @@ export async function initialSync(accountId: string): Promise<void> {
           const tid = threadId(msg.envelope?.messageId, msg.envelope?.inReplyTo);
           const subject = msg.envelope?.subject ?? "(no subject)";
           const isUnread = !msg.flags?.has("\\Seen");
-          const date = msg.internalDate ?? new Date();
+          const date = msg.internalDate instanceof Date ? msg.internalDate : new Date();
 
           const addrs = [
             ...(msg.envelope?.from ?? []),
@@ -234,7 +234,7 @@ export async function incrementalSync(accountId: string): Promise<void> {
         const tid = threadId(msg.envelope?.messageId, msg.envelope?.inReplyTo);
         const subject = msg.envelope?.subject ?? "(no subject)";
         const isUnread = !msg.flags?.has("\\Seen");
-        const date = msg.internalDate ?? new Date();
+        const date = msg.internalDate instanceof Date ? msg.internalDate : new Date();
 
         const addrs = [
           ...(msg.envelope?.from ?? []),

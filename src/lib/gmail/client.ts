@@ -18,8 +18,8 @@ export async function getGmailClient(
   const client = createOAuth2Client();
   client.setCredentials({
     access_token: decrypt(account.accessToken),
-    refresh_token: decrypt(account.refreshToken),
-    expiry_date: account.tokenExpiresAt.getTime(),
+    refresh_token: account.refreshToken ? decrypt(account.refreshToken) : undefined,
+    expiry_date: account.tokenExpiresAt?.getTime(),
   });
 
   // Persist refreshed tokens automatically

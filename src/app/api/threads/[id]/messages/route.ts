@@ -81,11 +81,11 @@ async function getImapMessages(accountId: string, threadId: string) {
       // Search for the root message and all replies by Message-ID / References
       const bareId = threadId.replace(/[<>]/g, "");
       const rootUids = (await client.search(
-        { header: ["message-id", `<${bareId}>`] },
+        { header: { "message-id": `<${bareId}>` } },
         { uid: true }
       )) as number[];
       const replyUids = (await client.search(
-        { header: ["in-reply-to", `<${bareId}>`] },
+        { header: { "in-reply-to": `<${bareId}>` } },
         { uid: true }
       )) as number[];
 
