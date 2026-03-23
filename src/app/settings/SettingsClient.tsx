@@ -140,6 +140,7 @@ export function SettingsClient({ accounts: initialAccounts, todoist, domains: in
   async function createDomain() {
     if (!newDomainName.trim()) return;
     setDomainError("");
+    setAddingDomain(true);
     try {
       const res = await fetch("/api/domains", {
         method: "POST",
@@ -153,6 +154,8 @@ export function SettingsClient({ accounts: initialAccounts, todoist, domains: in
       setNewDomainColor("#6366f1");
     } catch (err) {
       setDomainError(err instanceof Error ? err.message : "Failed to create domain");
+    } finally {
+      setAddingDomain(false);
     }
   }
 
