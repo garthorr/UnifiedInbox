@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { DomainBadge } from "@/components/shared/DomainBadge";
 import { AttachThreadModal } from "./AttachThreadModal";
+import { NotesEditor } from "./NotesEditor";
 import {
   Select,
   SelectContent,
@@ -24,6 +25,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { ThreadDrawer } from "@/components/inbox/ThreadDrawer";
 import {
   ExternalLink,
   Plus,
@@ -38,6 +40,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { gmailThreadUrl, relativeTime, formatDate } from "@/lib/utils";
+import { marked } from "marked";
 import type { WorkItemStatus } from "@prisma/client";
 
 interface Domain {
@@ -134,6 +137,7 @@ export function WorkItemDetail({ workItem, allDomains, todoistEnabled }: WorkIte
   const [domainId, setDomainId] = useState(workItem.domainId ?? "");
   const [showAttachModal, setShowAttachModal] = useState(false);
   const [detaching, setDetaching] = useState<string | null>(null);
+  const [readingThread, setReadingThread] = useState<{ id: string; gmailThreadId: string; subject: string } | null>(null);
   const [dueDate, setDueDate] = useState(
     workItem.dueDate ? new Date(workItem.dueDate).toISOString().slice(0, 10) : ""
   );
@@ -423,37 +427,30 @@ export function WorkItemDetail({ workItem, allDomains, todoistEnabled }: WorkIte
               Notes
             </Label>
             {editingNotes ? (
-              <div className="space-y-1.5">
-                <Textarea
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  className="text-sm min-h-[120px] resize-none"
-                  autoFocus
-                />
-                <div className="flex gap-1.5">
-                  <Button size="sm" className="h-6 text-xs" onClick={saveNotes}>
-                    Save
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-6 text-xs"
-                    onClick={() => {
-                      setNotes(workItem.notes ?? "");
-                      setEditingNotes(false);
-                    }}
-                  >
-                    Cancel
-                  </Button>
-                </div>
-              </div>
+              <NotesEditor
+                value={notes}
+                onChange={setNotes}
+                onSave={saveNotes}
+                onCancel={() => {
+                  setNotes(workItem.notes ?? "");
+                  setEditingNotes(false);
+                }}
+              />
             ) : (
               <div
-                className="min-h-[60px] cursor-pointer rounded-md border border-dashed border-slate-200 px-3 py-2 text-sm text-slate-600 hover:border-slate-300 hover:bg-slate-50"
+                className="min-h-[60px] cursor-pointer rounded-md border border-dashed border-slate-200 px-3 py-2 hover:border-slate-300 hover:bg-slate-50"
                 onClick={() => setEditingNotes(true)}
               >
-                {notes || (
-                  <span className="text-slate-400">Add notes... (click to edit)</span>
+                {notes ? (
+                  <div
+                    className="text-sm text-slate-600 prose prose-slate prose-sm max-w-none pointer-events-none
+                      [&_h2]:text-sm [&_h2]:font-semibold [&_h2]:mt-1 [&_h2]:mb-0.5
+                      [&_ul]:my-0.5 [&_ul]:pl-4 [&_li]:my-0
+                      [&_p]:my-0.5 [&_strong]:font-semibold [&_em]:italic"
+                    dangerouslySetInnerHTML={{ __html: (marked.parse(notes) as string) }}
+                  />
+                ) : (
+                  <span className="text-sm text-slate-400">Add notes… (click to edit)</span>
                 )}
               </div>
             )}
@@ -736,9 +733,12 @@ export function WorkItemDetail({ workItem, allDomains, todoistEnabled }: WorkIte
                         <div className="mt-1.5 h-2 w-2 rounded-full bg-blue-500 flex-shrink-0" />
                       )}
                       <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium text-slate-800 truncate">
+                        <button
+                          className="text-sm font-medium text-slate-800 truncate hover:text-blue-600 text-left w-full"
+                          onClick={() => setReadingThread({ id: thread.id, gmailThreadId: thread.gmailThreadId, subject: thread.subject })}
+                        >
                           {thread.subject}
-                        </p>
+                        </button>
                         <p className="text-xs text-slate-500 mt-0.5">
                           {thread.account.email} · {thread.messageCount} msg
                           {thread.messageCount !== 1 ? "s" : ""} ·{" "}
@@ -802,6 +802,8 @@ export function WorkItemDetail({ workItem, allDomains, todoistEnabled }: WorkIte
           onClose={() => setShowAttachModal(false)}
         />
       )}
+
+      <ThreadDrawer thread={readingThread} onClose={() => setReadingThread(null)} />
     </div>
   );
 }

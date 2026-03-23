@@ -1,10 +1,14 @@
 import { Suspense } from "react";
+import Link from "next/link";
 import { prisma } from "@/lib/db";
+import { Prisma } from "@prisma/client";
 import { isConfigured as todoistConfigured } from "@/lib/todoist";
 import { AppShell } from "@/components/layout/AppShell";
 import { InboxFilters } from "@/components/inbox/InboxFilters";
 import { InboxPane } from "@/components/inbox/InboxPane";
 import { SyncAllButton } from "@/components/inbox/SyncAllButton";
+import { StatusBadge } from "@/components/shared/StatusBadge";
+import { DomainBadge } from "@/components/shared/DomainBadge";
 
 interface PageProps {
   searchParams: Promise<{
@@ -23,27 +27,30 @@ async function InboxContent({ searchParams }: PageProps) {
   const afterDate = new Date();
   afterDate.setDate(afterDate.getDate() - days);
 
-  const [accounts, threads] = await Promise.all([
+  const threadWhere = {
+    isStale: false,
+    lastMessageAt: { gte: afterDate },
+    ...(params.accountId ? { accountId: params.accountId } : {}),
+    ...(params.isUnread === "true" ? { isUnread: true } : {}),
+    ...(q
+      ? {
+          OR: [
+            { subject: { contains: q, mode: Prisma.QueryMode.insensitive } },
+            { snippet: { contains: q, mode: Prisma.QueryMode.insensitive } },
+            { participantAddresses: { hasSome: [q] } },
+          ],
+        }
+      : {}),
+  };
+
+  const [accounts, threads, workItemResults] = await Promise.all([
     prisma.account.findMany({
       where: { isActive: true },
       select: { id: true, email: true },
       orderBy: { createdAt: "asc" },
     }),
     prisma.threadMirror.findMany({
-      where: {
-        isStale: false,
-        lastMessageAt: { gte: afterDate },
-        ...(params.accountId ? { accountId: params.accountId } : {}),
-        ...(params.isUnread === "true" ? { isUnread: true } : {}),
-        ...(q
-          ? {
-              OR: [
-                { subject: { contains: q, mode: "insensitive" } },
-                { snippet: { contains: q, mode: "insensitive" } },
-              ],
-            }
-          : {}),
-      },
+      where: threadWhere,
       orderBy: { lastMessageAt: "desc" },
       take: 100,
       include: {
@@ -52,6 +59,20 @@ async function InboxContent({ searchParams }: PageProps) {
         workItem: { select: { id: true, title: true, status: true } },
       },
     }),
+    q
+      ? prisma.workItem.findMany({
+          where: {
+            status: { not: "DONE" },
+            OR: [
+              { title: { contains: q, mode: Prisma.QueryMode.insensitive } },
+              { notes: { contains: q, mode: Prisma.QueryMode.insensitive } },
+            ],
+          },
+          orderBy: { updatedAt: "desc" },
+          take: 8,
+          include: { domain: { select: { id: true, name: true, color: true } } },
+        })
+      : Promise.resolve([]),
   ]);
 
   return (
@@ -66,6 +87,26 @@ async function InboxContent({ searchParams }: PageProps) {
           <SyncAllButton />
         </div>
       </div>
+      {workItemResults.length > 0 && (
+        <div className="flex-shrink-0 border-b bg-slate-50 px-6 py-2">
+          <p className="text-[10px] uppercase tracking-wide text-slate-400 mb-1.5">
+            Work Items ({workItemResults.length})
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {workItemResults.map((wi) => (
+              <Link
+                key={wi.id}
+                href={`/work-items/${wi.id}`}
+                className="flex items-center gap-1.5 rounded-md border bg-white px-2.5 py-1.5 text-xs shadow-sm hover:shadow transition-shadow"
+              >
+                {wi.domain && <DomainBadge name={wi.domain.name} color={wi.domain.color} />}
+                <span className="font-medium text-slate-800 max-w-[200px] truncate">{wi.title}</span>
+                <StatusBadge status={wi.status} />
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
       <InboxPane threads={threads} todoistEnabled={todoistConfigured()} />
     </div>
   );
