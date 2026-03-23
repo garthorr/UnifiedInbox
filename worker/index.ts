@@ -4,6 +4,18 @@ import { syncAccount } from "../src/lib/gmail/sync";
 import { getTask, isConfigured as todoistConfigured } from "../src/lib/todoist";
 
 const SYNC_INTERVAL = process.env.SYNC_INTERVAL_MINUTES ?? "15";
+const SYNC_CONCURRENCY = 3;
+
+/** Run tasks up to `limit` at a time to avoid exhausting the DB connection pool. */
+async function withConcurrency<T>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<void>
+): Promise<void> {
+  for (let i = 0; i < items.length; i += limit) {
+    await Promise.all(items.slice(i, i + limit).map(fn));
+  }
+}
 
 async function syncAllAccounts(): Promise<void> {
   const accounts = await prisma.account.findMany({
@@ -15,14 +27,14 @@ async function syncAllAccounts(): Promise<void> {
 
   console.log(`[worker] Syncing ${accounts.length} account(s)...`);
 
-  for (const account of accounts) {
+  await withConcurrency(accounts, SYNC_CONCURRENCY, async (account) => {
     try {
       await syncAccount(account.id);
       console.log(`[worker] ✓ ${account.email}`);
     } catch (err) {
       console.error(`[worker] ✗ ${account.email}:`, err);
     }
-  }
+  });
 }
 
 async function runInitialSyncs(): Promise<void> {

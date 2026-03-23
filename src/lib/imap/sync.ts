@@ -242,39 +242,30 @@ export async function incrementalSync(accountId: string): Promise<void> {
           ...(msg.envelope?.cc ?? []),
         ].map((a) => formatAddr(a as { name?: string; address?: string })).filter(Boolean);
 
-        const existing = await prisma.threadMirror.findUnique({
+        await prisma.threadMirror.upsert({
           where: { gmailThreadId_accountId: { gmailThreadId: tid, accountId } },
+          create: {
+            gmailThreadId: tid,
+            accountId,
+            subject,
+            snippet: "",
+            participantAddresses: addrs,
+            gmailLabelIds: ["INBOX"],
+            messageCount: 1,
+            hasAttachments: hasAtt(msg.bodyStructure),
+            isUnread,
+            lastMessageAt: date,
+            firstMessageAt: date,
+            historyId: String(uid),
+          },
+          update: {
+            messageCount: { increment: 1 },
+            lastMessageAt: date, // incremental UIDs are always newer
+            ...(isUnread && { isUnread: true }),
+            historyId: String(uid),
+            syncedAt: new Date(),
+          },
         });
-
-        if (existing) {
-          await prisma.threadMirror.update({
-            where: { id: existing.id },
-            data: {
-              messageCount: { increment: 1 },
-              lastMessageAt: date > existing.lastMessageAt ? date : undefined,
-              isUnread: isUnread ? true : undefined,
-              historyId: String(uid),
-              syncedAt: new Date(),
-            },
-          });
-        } else {
-          await prisma.threadMirror.create({
-            data: {
-              gmailThreadId: tid,
-              accountId,
-              subject,
-              snippet: "",
-              participantAddresses: addrs,
-              gmailLabelIds: ["INBOX"],
-              messageCount: 1,
-              hasAttachments: hasAtt(msg.bodyStructure),
-              isUnread,
-              lastMessageAt: date,
-              firstMessageAt: date,
-              historyId: String(uid),
-            },
-          });
-        }
         synced++;
       }
     } finally {

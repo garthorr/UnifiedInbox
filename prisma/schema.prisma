@@ -106,6 +106,8 @@ model ThreadMirror {
   @@index([lastMessageAt])
   @@index([isUnread])
   @@index([isStale])
+  // Compound index for the main inbox query: filter by account + stale, sort by date
+  @@index([accountId, isStale, lastMessageAt])
 }
 
 model Domain {

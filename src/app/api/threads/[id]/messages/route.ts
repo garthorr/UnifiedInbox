@@ -146,7 +146,7 @@ export async function GET(
 
     return NextResponse.json(messages);
   } catch (err) {
-    const msg = err instanceof Error ? err.message : "Failed to fetch messages";
-    return NextResponse.json({ error: msg }, { status: 502 });
+    console.error("[messages] fetch failed:", err);
+    return NextResponse.json({ error: "Failed to fetch messages" }, { status: 502 });
   }
 }

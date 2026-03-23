@@ -22,8 +22,9 @@ export async function getGmailClient(
     expiry_date: account.tokenExpiresAt?.getTime(),
   });
 
-  // Persist refreshed tokens automatically
-  client.on("tokens", async (tokens) => {
+  // Persist refreshed tokens automatically. Use once() to avoid listener accumulation
+  // if getGmailClient is called multiple times within the same request lifecycle.
+  client.once("tokens", async (tokens) => {
     const updates: Parameters<typeof prisma.account.update>[0]["data"] = {
       updatedAt: new Date(),
     };

@@ -25,6 +25,26 @@ export async function POST(request: Request) {
     );
   }
 
+  // Basic input validation
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) {
+    return NextResponse.json({ error: "Invalid email address" }, { status: 400 });
+  }
+  if (password.length < 1 || password.length > 512) {
+    return NextResponse.json({ error: "Password must be 1–512 characters" }, { status: 400 });
+  }
+  if (imapHost.length > 253 || !/^[a-zA-Z0-9._-]+$/.test(imapHost)) {
+    return NextResponse.json({ error: "Invalid IMAP host" }, { status: 400 });
+  }
+  const normalizedImapPort = imapPort ?? 993;
+  const normalizedSmtpPort = smtpPort ?? 587;
+  if (normalizedImapPort < 1 || normalizedImapPort > 65535) {
+    return NextResponse.json({ error: "IMAP port must be 1–65535" }, { status: 400 });
+  }
+  if (smtpHost && (normalizedSmtpPort < 1 || normalizedSmtpPort > 65535)) {
+    return NextResponse.json({ error: "SMTP port must be 1–65535" }, { status: 400 });
+  }
+
   // Test the connection before saving
   try {
     await testImapConnection(
@@ -34,9 +54,10 @@ export async function POST(request: Request) {
       password
     );
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    // Log internally but don't leak server error details to the client
+    console.error("[imap] connection test failed:", err);
     return NextResponse.json(
-      { error: `IMAP connection failed: ${msg}` },
+      { error: "Could not connect to IMAP server. Check host, port, and credentials." },
       { status: 422 }
     );
   }

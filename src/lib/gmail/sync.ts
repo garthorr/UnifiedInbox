@@ -251,6 +251,7 @@ export async function incrementalSync(accountId: string): Promise<void> {
 
   let historyItems: gmail_v1.Schema$History[] = [];
   let pageToken: string | undefined;
+  let latestHistoryId: string | undefined;
 
   try {
     do {
@@ -262,14 +263,16 @@ export async function incrementalSync(accountId: string): Promise<void> {
       });
       historyItems = historyItems.concat(data.history ?? []);
       pageToken = data.nextPageToken ?? undefined;
-
-      if (data.historyId) {
-        await prisma.account.update({
-          where: { id: accountId },
-          data: { historyId: data.historyId },
-        });
-      }
+      if (data.historyId) latestHistoryId = data.historyId;
     } while (pageToken);
+
+    // Persist the final historyId once after all pages are fetched
+    if (latestHistoryId) {
+      await prisma.account.update({
+        where: { id: accountId },
+        data: { historyId: latestHistoryId },
+      });
+    }
   } catch (err: unknown) {
     // historyId expired → fall back to initial sync
     if (

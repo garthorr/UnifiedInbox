@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+
 const COOKIE_NAME = "console_session";
 
 // Paths that don't require authentication
@@ -10,6 +11,9 @@ const PUBLIC_PATHS = [
   "/api/auth/connect",
   "/api/auth/callback",
 ];
+
+// Static file extensions — bypass auth entirely
+const STATIC_EXT = /\.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|map|webp)$/;
 
 function isPublic(pathname: string): boolean {
   return PUBLIC_PATHS.some((p) => pathname.startsWith(p));
@@ -28,12 +32,8 @@ export async function middleware(request: NextRequest) {
 
   if (isPublic(pathname)) return NextResponse.next();
 
-  // Skip static files and Next.js internals
-  if (
-    pathname.startsWith("/_next") ||
-    pathname.startsWith("/favicon") ||
-    pathname.includes(".")
-  ) {
+  // Skip Next.js internals and static assets
+  if (pathname.startsWith("/_next") || pathname.startsWith("/favicon") || STATIC_EXT.test(pathname)) {
     return NextResponse.next();
   }
 
@@ -41,6 +41,10 @@ export async function middleware(request: NextRequest) {
   const expected = await hashSecret(process.env.APP_SECRET ?? "");
 
   if (sessionCookie !== expected) {
+    // API routes return 401 JSON; page routes redirect to login
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set("redirect", pathname);
     return NextResponse.redirect(loginUrl);
