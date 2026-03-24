@@ -5,7 +5,7 @@ import { X } from "lucide-react";
 import { EmailViewer } from "./EmailViewer";
 
 interface ThreadDrawerProps {
-  thread: { id: string; gmailThreadId: string; subject: string } | null;
+  thread: { id: string; gmailThreadId: string; subject: string; isUnread?: boolean } | null;
   onClose: () => void;
 }
 
@@ -47,6 +47,8 @@ export function ThreadDrawer({ thread, onClose }: ThreadDrawerProps) {
             threadId={thread.id}
             gmailThreadId={thread.gmailThreadId}
             subject={thread.subject}
+            isUnread={thread.isUnread}
+            onStale={onClose}
           />
         </div>
       </div>

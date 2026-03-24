@@ -46,8 +46,11 @@ async function getGmailMessages(accountId: string, gmailThreadId: string) {
     const payload = msg.payload as GmailPart | undefined;
     return {
       id: msg.id ?? "",
+      messageId: h("message-id") || null,
       from: h("from"),
       to: h("to"),
+      replyTo: h("reply-to") || null,
+      references: h("references") || null,
       date: h("date"),
       snippet: msg.snippet ?? null,
       html: payload ? findBody(payload, "text/html") : null,
@@ -67,8 +70,11 @@ async function getImapMessages(accountId: string, threadId: string) {
 
   const messages: Array<{
     id: string;
+    messageId: string | null;
     from: string;
     to: string;
+    replyTo: string | null;
+    references: string | null;
     date: string;
     snippet: string | null;
     html: string | null;
@@ -102,10 +108,15 @@ async function getImapMessages(accountId: string, threadId: string) {
 
         messages.push({
           id: String(msg.uid),
+          messageId: parsed.messageId ?? null,
           from: parsed.from?.text ?? "",
           to: Array.isArray(parsed.to)
             ? parsed.to.map((a) => a.text).join(", ")
             : (parsed.to?.text ?? ""),
+          replyTo: parsed.replyTo?.text ?? null,
+          references: Array.isArray(parsed.references)
+            ? parsed.references.join(" ")
+            : (parsed.references ?? null),
           date: parsed.date?.toISOString() ?? "",
           snippet: (parsed.text ?? "").slice(0, 200) || null,
           html: parsed.html || null,

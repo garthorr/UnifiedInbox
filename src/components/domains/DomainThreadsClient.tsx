@@ -44,7 +44,12 @@ export function DomainThreadsClient({ threads, todoistEnabled = false }: DomainT
       </div>
 
       <ThreadDrawer
-        thread={selectedThread ? { id: selectedThread.id, gmailThreadId: selectedThread.gmailThreadId, subject: selectedThread.subject } : null}
+        thread={selectedThread ? {
+          id: selectedThread.id,
+          gmailThreadId: selectedThread.gmailThreadId,
+          subject: selectedThread.subject,
+          isUnread: selectedThread.isUnread,
+        } : null}
         onClose={() => setSelectedId(null)}
       />
     </>

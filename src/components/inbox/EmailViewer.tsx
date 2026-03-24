@@ -1,13 +1,21 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { Loader2, ExternalLink, ChevronDown, ChevronUp } from "lucide-react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import {
+  Loader2, ExternalLink, ChevronDown, ChevronUp,
+  ArchiveIcon, Trash2, Mail, MailOpen, Reply,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { ReplyCompose } from "./ReplyCompose";
 import { gmailThreadUrl } from "@/lib/utils";
 
 interface Message {
   id: string;
+  messageId: string | null;
   from: string;
   to: string;
+  replyTo: string | null;
+  references: string | null;
   date: string;
   snippet: string | null;
   html: string | null;
@@ -18,6 +26,11 @@ interface EmailViewerProps {
   threadId: string;
   gmailThreadId: string;
   subject: string;
+  isUnread?: boolean;
+  /** Called after archive/trash so the parent can remove the thread from view */
+  onStale?: () => void;
+  /** Called when read/unread state changes */
+  onUnreadChange?: (isUnread: boolean) => void;
 }
 
 function MessageFrame({ html }: { html: string }) {
@@ -43,17 +56,29 @@ function MessageFrame({ html }: { html: string }) {
   );
 }
 
-export function EmailViewer({ threadId, gmailThreadId, subject }: EmailViewerProps) {
+export function EmailViewer({
+  threadId,
+  gmailThreadId,
+  subject,
+  isUnread: initialUnread = false,
+  onStale,
+  onUnreadChange,
+}: EmailViewerProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [isUnread, setIsUnread] = useState(initialUnread);
+  const [actionError, setActionError] = useState("");
+  const [acting, setActing] = useState(false);
+  const [replyingTo, setReplyingTo] = useState<Message | null>(null);
 
   useEffect(() => {
     setLoading(true);
     setError("");
     setMessages([]);
     setExpanded(new Set());
+    setReplyingTo(null);
 
     fetch(`/api/threads/${threadId}/messages`)
       .then((r) => {
@@ -62,7 +87,6 @@ export function EmailViewer({ threadId, gmailThreadId, subject }: EmailViewerPro
       })
       .then((data) => {
         setMessages(data);
-        // Auto-expand the last message
         if (data.length > 0) {
           setExpanded(new Set([data[data.length - 1].id]));
         }
@@ -70,6 +94,32 @@ export function EmailViewer({ threadId, gmailThreadId, subject }: EmailViewerPro
       .catch(() => setError("Failed to load messages"))
       .finally(() => setLoading(false));
   }, [threadId]);
+
+  const doAction = useCallback(
+    async (action: "archive" | "trash" | "markRead" | "markUnread") => {
+      setActing(true);
+      setActionError("");
+      try {
+        const res = await fetch(`/api/threads/${threadId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action }),
+        });
+        if (!res.ok) {
+          const d = await res.json().catch(() => ({}));
+          throw new Error(d.error ?? "Action failed");
+        }
+        if (action === "markRead") { setIsUnread(false); onUnreadChange?.(false); }
+        if (action === "markUnread") { setIsUnread(true); onUnreadChange?.(true); }
+        if (action === "archive" || action === "trash") onStale?.();
+      } catch (err) {
+        setActionError(err instanceof Error ? err.message : "Action failed");
+      } finally {
+        setActing(false);
+      }
+    },
+    [threadId, onStale, onUnreadChange]
+  );
 
   function toggle(id: string) {
     setExpanded((prev) => {
@@ -79,6 +129,8 @@ export function EmailViewer({ threadId, gmailThreadId, subject }: EmailViewerPro
       return next;
     });
   }
+
+  const lastMsg = messages[messages.length - 1] ?? null;
 
   return (
     <div className="flex flex-col h-full bg-slate-50">
@@ -103,6 +155,68 @@ export function EmailViewer({ threadId, gmailThreadId, subject }: EmailViewerPro
         </a>
       </div>
 
+      {/* Action toolbar */}
+      <div className="flex-shrink-0 border-b bg-white px-4 py-1.5 flex items-center gap-1">
+        <Button
+          variant="ghost" size="sm"
+          className="h-7 text-xs gap-1.5 text-slate-600"
+          disabled={acting}
+          onClick={() => doAction("archive")}
+          title="Archive"
+        >
+          <ArchiveIcon className="h-3.5 w-3.5" />
+          Archive
+        </Button>
+        <Button
+          variant="ghost" size="sm"
+          className="h-7 text-xs gap-1.5 text-slate-600"
+          disabled={acting}
+          onClick={() => doAction("trash")}
+          title="Move to trash"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+          Trash
+        </Button>
+        <div className="w-px h-4 bg-slate-200 mx-0.5" />
+        {isUnread ? (
+          <Button
+            variant="ghost" size="sm"
+            className="h-7 text-xs gap-1.5 text-slate-600"
+            disabled={acting}
+            onClick={() => doAction("markRead")}
+            title="Mark as read"
+          >
+            <MailOpen className="h-3.5 w-3.5" />
+            Mark read
+          </Button>
+        ) : (
+          <Button
+            variant="ghost" size="sm"
+            className="h-7 text-xs gap-1.5 text-slate-600"
+            disabled={acting}
+            onClick={() => doAction("markUnread")}
+            title="Mark as unread"
+          >
+            <Mail className="h-3.5 w-3.5" />
+            Mark unread
+          </Button>
+        )}
+        <div className="w-px h-4 bg-slate-200 mx-0.5" />
+        <Button
+          variant="ghost" size="sm"
+          className="h-7 text-xs gap-1.5 text-slate-600"
+          disabled={acting || loading || !lastMsg}
+          onClick={() => setReplyingTo((prev) => (prev ? null : lastMsg))}
+          title="Reply to latest message"
+        >
+          <Reply className="h-3.5 w-3.5" />
+          Reply
+        </Button>
+        {actionError && (
+          <span className="ml-2 text-xs text-red-500">{actionError}</span>
+        )}
+      </div>
+
       {/* Body */}
       <div className="flex-1 overflow-y-auto p-3 space-y-2">
         {loading && (
@@ -123,9 +237,7 @@ export function EmailViewer({ threadId, gmailThreadId, subject }: EmailViewerPro
             return (
               <div
                 key={msg.id}
-                className={`rounded-lg border bg-white shadow-sm ${
-                  isLast ? "" : "opacity-80"
-                }`}
+                className={`rounded-lg border bg-white shadow-sm ${isLast ? "" : "opacity-80"}`}
               >
                 <button
                   className="w-full px-4 py-3 flex items-start gap-3 text-left hover:bg-slate-50 rounded-t-lg"
@@ -146,23 +258,65 @@ export function EmailViewer({ threadId, gmailThreadId, subject }: EmailViewerPro
                     <ChevronDown className="h-4 w-4 flex-shrink-0 text-slate-300 mt-0.5" />
                   )}
                 </button>
+
                 {isExpanded && (
-                  <div className="border-t px-4 py-3 overflow-hidden">
-                    {msg.html ? (
-                      <MessageFrame html={msg.html} />
-                    ) : msg.text ? (
-                      <pre className="text-sm text-slate-700 whitespace-pre-wrap font-sans leading-relaxed">
-                        {msg.text}
-                      </pre>
-                    ) : (
-                      <p className="text-sm text-slate-400">{msg.snippet}</p>
-                    )}
+                  <div className="border-t overflow-hidden">
+                    <div className="px-4 py-3">
+                      {msg.html ? (
+                        <MessageFrame html={msg.html} />
+                      ) : msg.text ? (
+                        <pre className="text-sm text-slate-700 whitespace-pre-wrap font-sans leading-relaxed">
+                          {msg.text}
+                        </pre>
+                      ) : (
+                        <p className="text-sm text-slate-400">{msg.snippet}</p>
+                      )}
+                    </div>
+                    {/* Per-message reply button */}
+                    <div className="px-4 pb-2 flex justify-end">
+                      <button
+                        className="text-xs text-slate-400 hover:text-slate-600 flex items-center gap-1"
+                        onClick={(e) => { e.stopPropagation(); setReplyingTo(msg); }}
+                      >
+                        <Reply className="h-3 w-3" />
+                        Reply
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
             );
           })}
       </div>
+
+      {/* Reply compose */}
+      {replyingTo && (
+        <ReplyCompose
+          threadId={threadId}
+          subject={subject}
+          to={replyingTo.replyTo ?? replyingTo.from}
+          inReplyTo={replyingTo.messageId}
+          references={
+            [replyingTo.references, replyingTo.messageId]
+              .filter(Boolean)
+              .join(" ") || null
+          }
+          onSent={() => {
+            setReplyingTo(null);
+            // Reload messages to show the sent reply
+            setLoading(true);
+            fetch(`/api/threads/${threadId}/messages`)
+              .then((r) => r.json() as Promise<Message[]>)
+              .then((data) => {
+                setMessages(data);
+                if (data.length > 0) setExpanded(new Set([data[data.length - 1].id]));
+              })
+              .catch(() => {})
+              .finally(() => setLoading(false));
+          }}
+          onCancel={() => setReplyingTo(null)}
+        />
+      )}
     </div>
   );
 }

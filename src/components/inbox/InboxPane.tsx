@@ -27,32 +27,48 @@ interface InboxPaneProps {
 
 export function InboxPane({ threads, todoistEnabled = false }: InboxPaneProps) {
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
+  // Track local overrides for isUnread (changed via action bar without full page refresh)
+  const [unreadOverrides, setUnreadOverrides] = useState<Record<string, boolean>>({});
+  // Track stale threads so they visually disappear from the list
+  const [staleIds, setStaleIds] = useState<Set<string>>(new Set());
 
-  const selectedThread = threads.find((t) => t.id === selectedThreadId) ?? null;
+  const visibleThreads = threads.filter((t) => !staleIds.has(t.id));
+  const selectedThread = visibleThreads.find((t) => t.id === selectedThreadId) ?? null;
+
+  function handleStale(id: string) {
+    setStaleIds((prev) => new Set([...prev, id]));
+    setSelectedThreadId(null);
+  }
 
   return (
     <div className="flex flex-1 overflow-hidden h-full">
-      {/* Thread list */}
       <div
         className={`flex-shrink-0 overflow-y-auto border-r ${
           selectedThreadId ? "w-[380px]" : "w-full"
         }`}
       >
         <ThreadList
-          threads={threads}
+          threads={visibleThreads.map((t) => ({
+            ...t,
+            isUnread: unreadOverrides[t.id] ?? t.isUnread,
+          }))}
           todoistEnabled={todoistEnabled}
           selectedThreadId={selectedThreadId}
           onSelectThread={setSelectedThreadId}
         />
       </div>
 
-      {/* Email viewer */}
       {selectedThread && (
         <div className="flex-1 overflow-hidden">
           <EmailViewer
             threadId={selectedThread.id}
             gmailThreadId={selectedThread.gmailThreadId}
             subject={selectedThread.subject}
+            isUnread={unreadOverrides[selectedThread.id] ?? selectedThread.isUnread}
+            onStale={() => handleStale(selectedThread.id)}
+            onUnreadChange={(v) =>
+              setUnreadOverrides((prev) => ({ ...prev, [selectedThread.id]: v }))
+            }
           />
         </div>
       )}
