@@ -2,48 +2,59 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getGmailClient } from "@/lib/gmail/client";
 import { createImapClient } from "@/lib/imap/sync";
-import { simpleParser } from "mailparser";
+import { findBody } from "@/lib/gmail/mime";
+import type { GmailPart } from "@/lib/gmail/mime";
 
-// ─── MIME helpers (Gmail) ──────────────────────────────────────────────────
-
-type GmailPart = {
-  mimeType?: string | null;
-  body?: { data?: string | null } | null;
-  parts?: GmailPart[] | null;
+type MessageMeta = {
+  id: string;
+  messageId: string | null;
+  from: string;
+  to: string;
+  replyTo: string | null;
+  references: string | null;
+  date: string;
+  snippet: string | null;
+  html: string | null;
+  text: string | null;
+  bodyLoaded: boolean;
 };
 
-function findBody(part: GmailPart, mimeType: string): string | null {
-  if (part.mimeType === mimeType && part.body?.data) {
-    return Buffer.from(
-      part.body.data.replace(/-/g, "+").replace(/_/g, "/"),
-      "base64"
-    ).toString("utf-8");
-  }
-  if (part.parts) {
-    for (const p of part.parts) {
-      const result = findBody(p, mimeType);
-      if (result) return result;
-    }
-  }
-  return null;
-}
+// ─── Gmail handler ────────────────────────────────────────────────────────────
+// Uses format:"metadata" for the thread list (fast, no body data) and fetches
+// the full body only for the last (auto-expanded) message.
 
-// ─── Gmail handler ─────────────────────────────────────────────────────────
-
-async function getGmailMessages(accountId: string, gmailThreadId: string) {
+async function getGmailMessages(accountId: string, gmailThreadId: string): Promise<MessageMeta[]> {
   const gmail = await getGmailClient(accountId);
-  const full = await gmail.users.threads.get({
+
+  // Step 1: lightweight metadata fetch — no body payloads, just headers + snippets
+  const threadRes = await gmail.users.threads.get({
     userId: "me",
     id: gmailThreadId,
+    format: "metadata",
+    metadataHeaders: ["From", "To", "Date", "Message-ID", "Reply-To", "References"],
+  });
+
+  const msgs = threadRes.data.messages ?? [];
+  if (msgs.length === 0) return [];
+
+  // Step 2: full body for the last message only (the one that auto-expands)
+  const lastId = msgs[msgs.length - 1].id!;
+  const fullRes = await gmail.users.messages.get({
+    userId: "me",
+    id: lastId,
     format: "full",
   });
 
-  return (full.data.messages ?? []).map((msg) => {
+  const lastPayload = fullRes.data.payload as GmailPart | undefined;
+  const lastHtml = lastPayload ? findBody(lastPayload, "text/html") : null;
+  const lastText = lastPayload ? findBody(lastPayload, "text/plain") : null;
+
+  return msgs.map((msg, i) => {
     const headers = msg.payload?.headers ?? [];
     const h = (name: string) =>
       headers.find((hh) => hh.name?.toLowerCase() === name.toLowerCase())?.value ?? "";
 
-    const payload = msg.payload as GmailPart | undefined;
+    const isLast = i === msgs.length - 1;
     return {
       id: msg.id ?? "",
       messageId: h("message-id") || null,
@@ -53,87 +64,106 @@ async function getGmailMessages(accountId: string, gmailThreadId: string) {
       references: h("references") || null,
       date: h("date"),
       snippet: msg.snippet ?? null,
-      html: payload ? findBody(payload, "text/html") : null,
-      text: payload ? findBody(payload, "text/plain") : null,
+      html: isLast ? lastHtml : null,
+      text: isLast ? lastText : null,
+      bodyLoaded: isLast,
     };
   });
 }
 
-// ─── IMAP handler ──────────────────────────────────────────────────────────
+// ─── IMAP helpers ─────────────────────────────────────────────────────────────
 
-async function getImapMessages(accountId: string, threadId: string) {
+function fmtAddr(a: { name?: string | null; address?: string | null }): string {
+  if (a.name && a.address) return `${a.name} <${a.address}>`;
+  return a.address ?? a.name ?? "";
+}
+
+// ─── IMAP handler ─────────────────────────────────────────────────────────────
+// Runs both SEARCHes in parallel, fetches envelope (metadata) for all messages,
+// then fetches the source only for the last message.
+
+async function getImapMessages(accountId: string, threadId: string): Promise<MessageMeta[]> {
   const account = await prisma.account.findUniqueOrThrow({ where: { id: accountId } });
-
-  // Retrieve UIDs stored in ThreadMirror.historyId (highest UID) plus search
   const client = createImapClient(account as Parameters<typeof createImapClient>[0]);
   await client.connect();
-
-  const messages: Array<{
-    id: string;
-    messageId: string | null;
-    from: string;
-    to: string;
-    replyTo: string | null;
-    references: string | null;
-    date: string;
-    snippet: string | null;
-    html: string | null;
-    text: string | null;
-  }> = [];
 
   try {
     const lock = await client.getMailboxLock("INBOX");
     try {
-      // Search for the root message and all replies by Message-ID / References
       const bareId = threadId.replace(/[<>]/g, "");
-      const rootUids = (await client.search(
-        { header: { "message-id": `<${bareId}>` } },
-        { uid: true }
-      )) as number[];
-      const replyUids = (await client.search(
-        { header: { "in-reply-to": `<${bareId}>` } },
-        { uid: true }
-      )) as number[];
+
+      // Parallel SEARCH instead of sequential
+      const [rootUids, replyUids] = await Promise.all([
+        client.search({ header: { "message-id": `<${bareId}>` } }, { uid: true }) as Promise<number[]>,
+        client.search({ header: { "in-reply-to": `<${bareId}>` } }, { uid: true }) as Promise<number[]>,
+      ]);
 
       const allUids = [...new Set([...rootUids, ...replyUids])].sort((a, b) => a - b);
-      if (allUids.length === 0) return messages;
+      if (allUids.length === 0) return [];
 
-      for await (const msg of client.fetch(
-        allUids,
-        { uid: true, source: true },
-        { uid: true }
-      )) {
-        const source = msg.source as Buffer;
-        const parsed = await simpleParser(source);
-
-        messages.push({
-          id: String(msg.uid),
-          messageId: parsed.messageId ?? null,
-          from: parsed.from?.text ?? "",
-          to: Array.isArray(parsed.to)
-            ? parsed.to.map((a) => a.text).join(", ")
-            : (parsed.to?.text ?? ""),
-          replyTo: parsed.replyTo?.text ?? null,
-          references: Array.isArray(parsed.references)
-            ? parsed.references.join(" ")
-            : (parsed.references ?? null),
-          date: parsed.date?.toISOString() ?? "",
-          snippet: (parsed.text ?? "").slice(0, 200) || null,
-          html: parsed.html || null,
-          text: parsed.text || null,
-        });
+      // Step 1: envelope (metadata) for all — no body download
+      type EnvMsg = {
+        uid: number;
+        envelope: {
+          date?: Date | null;
+          messageId?: string | null;
+          from?: Array<{ name?: string | null; address?: string | null }> | null;
+          to?: Array<{ name?: string | null; address?: string | null }> | null;
+          replyTo?: Array<{ name?: string | null; address?: string | null }> | null;
+        };
+      };
+      const envMessages: EnvMsg[] = [];
+      for await (const msg of client.fetch(allUids, { uid: true, envelope: true }, { uid: true })) {
+        envMessages.push({ uid: msg.uid, envelope: msg.envelope as EnvMsg["envelope"] });
       }
+
+      // Step 2: full source for the last message only
+      const lastUid = allUids[allUids.length - 1];
+      let lastHtml: string | null = null;
+      let lastText: string | null = null;
+      let lastSnippet: string | null = null;
+      let lastMessageId: string | null = null;
+      let lastReferences: string | null = null;
+
+      const { simpleParser } = await import("mailparser");
+      for await (const msg of client.fetch([lastUid], { uid: true, source: true }, { uid: true })) {
+        const parsed = await simpleParser(msg.source as Buffer);
+        lastHtml = parsed.html || null;
+        lastText = parsed.text || null;
+        lastSnippet = (parsed.text ?? "").slice(0, 200) || null;
+        lastMessageId = parsed.messageId ?? null;
+        lastReferences = Array.isArray(parsed.references)
+          ? parsed.references.join(" ")
+          : (parsed.references ?? null);
+      }
+
+      return envMessages.map((em, i) => {
+        const env = em.envelope;
+        const isLast = i === envMessages.length - 1;
+        const msgId = isLast ? lastMessageId : (env.messageId ?? null);
+        return {
+          id: String(em.uid),
+          messageId: msgId,
+          from: (env.from?.[0] ? fmtAddr(env.from[0]) : ""),
+          to: (env.to ?? []).map(fmtAddr).join(", "),
+          replyTo: env.replyTo?.[0] ? fmtAddr(env.replyTo[0]) : null,
+          references: isLast ? lastReferences : null,
+          date: env.date?.toISOString() ?? "",
+          snippet: isLast ? lastSnippet : null,
+          html: isLast ? lastHtml : null,
+          text: isLast ? lastText : null,
+          bodyLoaded: isLast,
+        };
+      });
     } finally {
       lock.release();
     }
   } finally {
     await client.logout().catch(() => {});
   }
-
-  return messages;
 }
 
-// ─── Route handler ─────────────────────────────────────────────────────────
+// ─── Route handler ────────────────────────────────────────────────────────────
 
 export async function GET(
   _request: Request,
@@ -145,9 +175,7 @@ export async function GET(
     where: { id },
     include: { account: { select: { accountType: true } } },
   });
-  if (!thread) {
-    return NextResponse.json({ error: "Thread not found" }, { status: 404 });
-  }
+  if (!thread) return NextResponse.json({ error: "Thread not found" }, { status: 404 });
 
   try {
     const messages =

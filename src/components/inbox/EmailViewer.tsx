@@ -1,6 +1,13 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+
+// Module-level cache: threadId → messages (lives for the browser session,
+// cleared on reply-sent via the exported invalidate helper)
+const messageCache = new Map<string, Message[]>();
+export function invalidateThreadCache(threadId: string) {
+  messageCache.delete(threadId);
+}
 import {
   Loader2, ExternalLink, ChevronDown, ChevronUp,
   ArchiveIcon, Trash2, Mail, MailOpen, Reply,
@@ -20,6 +27,7 @@ interface Message {
   snippet: string | null;
   html: string | null;
   text: string | null;
+  bodyLoaded: boolean;
 }
 
 interface EmailViewerProps {
@@ -72,13 +80,24 @@ export function EmailViewer({
   const [actionError, setActionError] = useState("");
   const [acting, setActing] = useState(false);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
+  const [loadingBodyIds, setLoadingBodyIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
+    setReplyingTo(null);
+
+    const cached = messageCache.get(threadId);
+    if (cached) {
+      setMessages(cached);
+      setExpanded(new Set(cached.length > 0 ? [cached[cached.length - 1].id] : []));
+      setLoading(false);
+      setError("");
+      return;
+    }
+
     setLoading(true);
     setError("");
     setMessages([]);
     setExpanded(new Set());
-    setReplyingTo(null);
 
     fetch(`/api/threads/${threadId}/messages`)
       .then((r) => {
@@ -86,10 +105,9 @@ export function EmailViewer({
         return r.json() as Promise<Message[]>;
       })
       .then((data) => {
+        messageCache.set(threadId, data);
         setMessages(data);
-        if (data.length > 0) {
-          setExpanded(new Set([data[data.length - 1].id]));
-        }
+        if (data.length > 0) setExpanded(new Set([data[data.length - 1].id]));
       })
       .catch(() => setError("Failed to load messages"))
       .finally(() => setLoading(false));
@@ -124,10 +142,31 @@ export function EmailViewer({
   function toggle(id: string) {
     setExpanded((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      if (next.has(id)) { next.delete(id); return next; }
+      next.add(id);
       return next;
     });
+
+    // Lazy-load body if not yet fetched
+    const msg = messages.find((m) => m.id === id);
+    if (msg && !msg.bodyLoaded && !loadingBodyIds.has(id)) {
+      setLoadingBodyIds((prev) => new Set([...prev, id]));
+      fetch(`/api/threads/${threadId}/messages/${id}`)
+        .then((r) => r.json() as Promise<{ html: string | null; text: string | null }>)
+        .then(({ html, text }) => {
+          setMessages((prev) => {
+            const updated = prev.map((m) =>
+              m.id === id ? { ...m, html, text, bodyLoaded: true } : m
+            );
+            messageCache.set(threadId, updated);
+            return updated;
+          });
+        })
+        .catch(() => {/* silently fail — snippet still shows */})
+        .finally(() => setLoadingBodyIds((prev) => {
+          const next = new Set(prev); next.delete(id); return next;
+        }));
+    }
   }
 
   const lastMsg = messages[messages.length - 1] ?? null;
@@ -262,7 +301,11 @@ export function EmailViewer({
                 {isExpanded && (
                   <div className="border-t overflow-hidden">
                     <div className="px-4 py-3">
-                      {msg.html ? (
+                      {loadingBodyIds.has(msg.id) ? (
+                        <div className="flex items-center justify-center py-8">
+                          <Loader2 className="h-4 w-4 animate-spin text-slate-300" />
+                        </div>
+                      ) : msg.html ? (
                         <MessageFrame html={msg.html} />
                       ) : msg.text ? (
                         <pre className="text-sm text-slate-700 whitespace-pre-wrap font-sans leading-relaxed">
@@ -303,11 +346,13 @@ export function EmailViewer({
           }
           onSent={() => {
             setReplyingTo(null);
-            // Reload messages to show the sent reply
+            // Bust cache and reload so the sent reply appears
+            messageCache.delete(threadId);
             setLoading(true);
             fetch(`/api/threads/${threadId}/messages`)
               .then((r) => r.json() as Promise<Message[]>)
               .then((data) => {
+                messageCache.set(threadId, data);
                 setMessages(data);
                 if (data.length > 0) setExpanded(new Set([data[data.length - 1].id]));
               })
