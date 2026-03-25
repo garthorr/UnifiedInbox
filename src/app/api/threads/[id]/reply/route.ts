@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { serverCacheDelete } from "@/lib/server-message-cache";
 
 export async function POST(
   request: Request,
@@ -47,11 +48,12 @@ export async function POST(
       });
     }
 
-    // Mark thread as read after replying
+    // Mark thread as read after replying; invalidate message cache
     await prisma.threadMirror.update({
       where: { id },
       data: { isUnread: false },
     });
+    serverCacheDelete(id);
 
     return NextResponse.json({ ok: true });
   } catch (err) {

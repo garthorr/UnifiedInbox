@@ -4,6 +4,7 @@ import { getGmailClient } from "@/lib/gmail/client";
 import { createImapClient } from "@/lib/imap/sync";
 import { findBody } from "@/lib/gmail/mime";
 import type { GmailPart } from "@/lib/gmail/mime";
+import { serverCacheGet, serverCacheSet } from "@/lib/server-message-cache";
 
 type MessageMeta = {
   id: string;
@@ -171,6 +172,10 @@ export async function GET(
 ) {
   const { id } = await params;
 
+  // Serve from server-side cache if available (TTL: 5 min)
+  const cached = serverCacheGet(id);
+  if (cached) return NextResponse.json(cached);
+
   const thread = await prisma.threadMirror.findUnique({
     where: { id },
     include: { account: { select: { accountType: true } } },
@@ -183,6 +188,7 @@ export async function GET(
         ? await getImapMessages(thread.accountId, thread.gmailThreadId)
         : await getGmailMessages(thread.accountId, thread.gmailThreadId);
 
+    serverCacheSet(id, messages);
     return NextResponse.json(messages);
   } catch (err) {
     console.error("[messages] fetch failed:", err);

@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { ThreadList } from "./ThreadList";
 import { EmailViewer } from "./EmailViewer";
+import { messageCache } from "@/lib/client-message-cache";
 
 interface Thread {
   id: string;
@@ -44,6 +45,24 @@ export function InboxPane({ threads, todoistEnabled = false }: InboxPaneProps) {
     () => visibleThreads.find((t) => t.id === selectedThreadId) ?? null,
     [visibleThreads, selectedThreadId]
   );
+
+  // Background-prefetch the top 5 threads after the page settles so clicks are instant
+  useEffect(() => {
+    const top5 = threads.slice(0, 5);
+    if (top5.length === 0) return;
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      top5.forEach(async (t) => {
+        if (cancelled || messageCache.has(t.id)) return;
+        try {
+          const r = await fetch(`/api/threads/${t.id}/messages`);
+          if (!r.ok || cancelled) return;
+          messageCache.set(t.id, await r.json());
+        } catch { /* silently ignore prefetch failures */ }
+      });
+    }, 800);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [threads]);
 
   function handleStale(id: string) {
     setStaleIds((prev) => new Set([...prev, id]));

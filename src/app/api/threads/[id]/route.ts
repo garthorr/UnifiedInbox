@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { serverCacheDelete } from "@/lib/server-message-cache";
 
 type Action = "archive" | "trash" | "markRead" | "markUnread";
 
@@ -46,6 +47,9 @@ export async function PATCH(
       where: { id },
       data: dbUpdate,
     });
+
+    // Invalidate server message cache so next open re-fetches fresh state
+    serverCacheDelete(id);
 
     return NextResponse.json(updated);
   } catch (err) {
