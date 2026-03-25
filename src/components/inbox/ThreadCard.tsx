@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, memo } from "react";
 import Link from "next/link";
 import { ExternalLink, Plus, ArrowRight, Paperclip } from "lucide-react";
 import { DomainBadge, UnassignedBadge } from "@/components/shared/DomainBadge";
@@ -30,7 +30,7 @@ interface ThreadCardProps {
   onSelect?: () => void;
 }
 
-export function ThreadCard({
+export const ThreadCard = memo(function ThreadCard({
   thread,
   todoistEnabled = false,
   isSelected = false,
@@ -140,4 +140,4 @@ export function ThreadCard({
       )}
     </>
   );
-}
+});

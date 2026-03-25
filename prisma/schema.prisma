@@ -106,8 +106,10 @@ model ThreadMirror {
   @@index([lastMessageAt])
   @@index([isUnread])
   @@index([isStale])
-  // Compound index for the main inbox query: filter by account + stale, sort by date
+  // Compound indexes for common query patterns
   @@index([accountId, isStale, lastMessageAt])
+  @@index([domainId, isStale, lastMessageAt])
+  @@index([workItemId, isStale])
 }
 
 model Domain {
@@ -145,6 +147,7 @@ model WorkItem {
   @@index([domainId])
   @@index([status])
   @@index([dueDate])
+  @@index([status, domainId])
 }
 
 model TaskLink {
@@ -198,4 +201,6 @@ model ActivityLog {
   @@index([accountId])
   @@index([workItemId])
   @@index([eventType])
+  @@index([createdAt, accountId])
+  @@index([eventType, createdAt])
 }

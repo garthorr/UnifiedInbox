@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { ThreadList } from "./ThreadList";
 import { EmailViewer } from "./EmailViewer";
 
@@ -32,8 +32,18 @@ export function InboxPane({ threads, todoistEnabled = false }: InboxPaneProps) {
   // Track stale threads so they visually disappear from the list
   const [staleIds, setStaleIds] = useState<Set<string>>(new Set());
 
-  const visibleThreads = threads.filter((t) => !staleIds.has(t.id));
-  const selectedThread = visibleThreads.find((t) => t.id === selectedThreadId) ?? null;
+  const visibleThreads = useMemo(
+    () => threads.filter((t) => !staleIds.has(t.id)),
+    [threads, staleIds]
+  );
+  const threadsWithOverrides = useMemo(
+    () => visibleThreads.map((t) => ({ ...t, isUnread: unreadOverrides[t.id] ?? t.isUnread })),
+    [visibleThreads, unreadOverrides]
+  );
+  const selectedThread = useMemo(
+    () => visibleThreads.find((t) => t.id === selectedThreadId) ?? null,
+    [visibleThreads, selectedThreadId]
+  );
 
   function handleStale(id: string) {
     setStaleIds((prev) => new Set([...prev, id]));
@@ -48,10 +58,7 @@ export function InboxPane({ threads, todoistEnabled = false }: InboxPaneProps) {
         }`}
       >
         <ThreadList
-          threads={visibleThreads.map((t) => ({
-            ...t,
-            isUnread: unreadOverrides[t.id] ?? t.isUnread,
-          }))}
+          threads={threadsWithOverrides}
           todoistEnabled={todoistEnabled}
           selectedThreadId={selectedThreadId}
           onSelectThread={setSelectedThreadId}

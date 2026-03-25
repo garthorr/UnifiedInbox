@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -147,6 +147,18 @@ export function WorkItemDetail({ workItem, allDomains, todoistEnabled }: WorkIte
   const [todoistError, setTodoistError] = useState("");
   const todoistLink = workItem.taskLinks.find((tl) => tl.provider === "TODOIST") ?? null;
 
+  // Memoised markdown preview — only re-parses when notes content changes
+  const notesHtml = useMemo(() => marked.parse(notes) as string, [notes]);
+
+  // Current domain object lookup
+  const currentDomain = useMemo(
+    () => allDomains.find((d) => d.id === domainId) ?? null,
+    [allDomains, domainId]
+  );
+
+  // Debounce ref for patch calls — prevents API flood on rapid field changes
+  const patchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Todoist project picker state
   const [pickerOpen, setPickerOpen] = useState(false);
   const [projects, setProjects] = useState<{ id: string; name: string; parent_id: string | null; is_inbox_project: boolean }[]>([]);
@@ -192,7 +204,7 @@ export function WorkItemDetail({ workItem, allDomains, todoistEnabled }: WorkIte
       .finally(() => setSectionsLoading(false));
   }, [selectedProjectId]);
 
-  async function patch(data: Record<string, unknown>) {
+  async function patchImmediate(data: Record<string, unknown>) {
     setSaving(true);
     try {
       const res = await fetch(`/api/work-items/${workItem.id}`, {
@@ -204,6 +216,15 @@ export function WorkItemDetail({ workItem, allDomains, todoistEnabled }: WorkIte
     } finally {
       setSaving(false);
     }
+  }
+
+  function patch(data: Record<string, unknown>, debounceMs = 0) {
+    if (debounceMs === 0) {
+      patchImmediate(data);
+      return;
+    }
+    if (patchTimerRef.current) clearTimeout(patchTimerRef.current);
+    patchTimerRef.current = setTimeout(() => patchImmediate(data), debounceMs);
   }
 
   async function handleStatusChange(newStatus: WorkItemStatus) {
@@ -226,7 +247,7 @@ export function WorkItemDetail({ workItem, allDomains, todoistEnabled }: WorkIte
 
   async function saveNotes() {
     setEditingNotes(false);
-    await patch({ notes });
+    patch({ notes }, 500);
   }
 
   async function saveDueDate() {
@@ -313,8 +334,6 @@ export function WorkItemDetail({ workItem, allDomains, todoistEnabled }: WorkIte
       setTodoistLoading(false);
     }
   }
-
-  const currentDomain = allDomains.find((d) => d.id === domainId);
 
   return (
     <div className="flex flex-col h-full">
@@ -447,7 +466,7 @@ export function WorkItemDetail({ workItem, allDomains, todoistEnabled }: WorkIte
                       [&_h2]:text-sm [&_h2]:font-semibold [&_h2]:mt-1 [&_h2]:mb-0.5
                       [&_ul]:my-0.5 [&_ul]:pl-4 [&_li]:my-0
                       [&_p]:my-0.5 [&_strong]:font-semibold [&_em]:italic"
-                    dangerouslySetInnerHTML={{ __html: (marked.parse(notes) as string) }}
+                    dangerouslySetInnerHTML={{ __html: notesHtml }}
                   />
                 ) : (
                   <span className="text-sm text-slate-400">Add notes… (click to edit)</span>

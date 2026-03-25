@@ -206,14 +206,23 @@ export async function initialSync(accountId: string): Promise<void> {
   let maxHistoryId = "0";
   let synced = 0;
 
-  for (const threadId of threadIds) {
-    const thread = await fetchThreadMetadata(gmail, userId, threadId);
-    if (!thread) continue;
-    await upsertThread(accountId, thread);
-    synced++;
-    if (thread.historyId && thread.historyId > maxHistoryId) {
-      maxHistoryId = thread.historyId;
-    }
+  // Fetch and upsert in batches of 10 to parallelise without overwhelming the API
+  const BATCH = 10;
+  for (let i = 0; i < threadIds.length; i += BATCH) {
+    const batch = threadIds.slice(i, i + BATCH);
+    const threads = await Promise.all(
+      batch.map((id) => fetchThreadMetadata(gmail, userId, id))
+    );
+    await Promise.all(
+      threads.map(async (thread) => {
+        if (!thread) return;
+        await upsertThread(accountId, thread);
+        synced++;
+        if (thread.historyId && thread.historyId > maxHistoryId) {
+          maxHistoryId = thread.historyId;
+        }
+      })
+    );
   }
 
   await prisma.account.update({
@@ -298,26 +307,35 @@ export async function incrementalSync(accountId: string): Promise<void> {
   }
 
   let synced = 0;
-  for (const threadId of affectedThreadIds) {
-    const thread = await fetchThreadMetadata(gmail, userId, threadId);
-    if (!thread) {
-      // Thread deleted/moved
-      await prisma.threadMirror.updateMany({
-        where: { gmailThreadId: threadId, accountId },
-        data: { isStale: true },
-      });
-      await prisma.activityLog.create({
-        data: {
-          eventType: "THREAD_STALE",
-          accountId,
-          description: `Thread no longer accessible in Gmail`,
-          metadata: { gmailThreadId: threadId },
-        },
-      });
-    } else {
-      await upsertThread(accountId, thread);
-      synced++;
-    }
+  const affectedIds = [...affectedThreadIds];
+  const BATCH = 10;
+  for (let i = 0; i < affectedIds.length; i += BATCH) {
+    const batch = affectedIds.slice(i, i + BATCH);
+    const threads = await Promise.all(
+      batch.map((id) => fetchThreadMetadata(gmail, userId, id))
+    );
+    await Promise.all(
+      batch.map(async (threadId, idx) => {
+        const thread = threads[idx];
+        if (!thread) {
+          await prisma.threadMirror.updateMany({
+            where: { gmailThreadId: threadId, accountId },
+            data: { isStale: true },
+          });
+          await prisma.activityLog.create({
+            data: {
+              eventType: "THREAD_STALE",
+              accountId,
+              description: `Thread no longer accessible in Gmail`,
+              metadata: { gmailThreadId: threadId },
+            },
+          });
+        } else {
+          await upsertThread(accountId, thread);
+          synced++;
+        }
+      })
+    );
   }
 
   await prisma.account.update({

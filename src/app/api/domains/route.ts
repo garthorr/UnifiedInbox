@@ -9,7 +9,7 @@ export async function GET() {
       _count: {
         select: {
           workItems: true,
-          threads: { where: { isStale: false } },
+          threads: true,
         },
       },
     },

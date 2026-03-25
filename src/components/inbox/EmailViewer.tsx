@@ -2,9 +2,23 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 
-// Module-level cache: threadId → messages (lives for the browser session,
-// cleared on reply-sent via the exported invalidate helper)
-const messageCache = new Map<string, Message[]>();
+// Module-level LRU cache (max 100 threads) — lives for the browser session.
+// Oldest entry is evicted when the cap is reached.
+const MESSAGE_CACHE_MAX = 100;
+class LRUCache<V> {
+  private map = new Map<string, V>();
+  get(key: string) { return this.map.get(key); }
+  set(key: string, value: V) {
+    if (this.map.has(key)) this.map.delete(key);
+    else if (this.map.size >= MESSAGE_CACHE_MAX) {
+      this.map.delete(this.map.keys().next().value!);
+    }
+    this.map.set(key, value);
+  }
+  delete(key: string) { this.map.delete(key); }
+  has(key: string) { return this.map.has(key); }
+}
+const messageCache = new LRUCache<Message[]>();
 export function invalidateThreadCache(threadId: string) {
   messageCache.delete(threadId);
 }

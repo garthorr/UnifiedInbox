@@ -70,7 +70,12 @@ async function InboxContent({ searchParams }: PageProps) {
           },
           orderBy: { updatedAt: "desc" },
           take: 8,
-          include: { domain: { select: { id: true, name: true, color: true } } },
+          select: {
+            id: true,
+            title: true,
+            status: true,
+            domain: { select: { id: true, name: true, color: true } },
+          },
         })
       : Promise.resolve([]),
   ]);
