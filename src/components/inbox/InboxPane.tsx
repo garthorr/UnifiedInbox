@@ -16,17 +16,21 @@ interface Thread {
   isUnread: boolean;
   lastMessageAt: Date | string;
   workItemId: string | null;
+  gmailLabelIds: string[];
   account: { id: string; email: string; displayName: string };
   domain: { id: string; name: string; color: string } | null;
   workItem: { id: string; title: string; status: string } | null;
 }
 
+type LabelInfo = { name: string; color: string | null };
+
 interface InboxPaneProps {
   threads: Thread[];
+  labelMap?: Record<string, Record<string, LabelInfo>>;
   todoistEnabled?: boolean;
 }
 
-export function InboxPane({ threads, todoistEnabled = false }: InboxPaneProps) {
+export function InboxPane({ threads, labelMap = {}, todoistEnabled = false }: InboxPaneProps) {
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   // Track local overrides for isUnread (changed via action bar without full page refresh)
   const [unreadOverrides, setUnreadOverrides] = useState<Record<string, boolean>>({});
@@ -78,6 +82,7 @@ export function InboxPane({ threads, todoistEnabled = false }: InboxPaneProps) {
       >
         <ThreadList
           threads={threadsWithOverrides}
+          labelMap={labelMap}
           todoistEnabled={todoistEnabled}
           selectedThreadId={selectedThreadId}
           onSelectThread={setSelectedThreadId}

@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getGmailClient } from "@/lib/gmail/client";
 import { createImapClient } from "@/lib/imap/sync";
-import { findBody } from "@/lib/gmail/mime";
-import type { GmailPart } from "@/lib/gmail/mime";
+import { findBody, findAttachments } from "@/lib/gmail/mime";
+import type { GmailPart, AttachmentMeta } from "@/lib/gmail/mime";
 import { serverCacheGet, serverCacheSet } from "@/lib/server-message-cache";
 
 type MessageMeta = {
@@ -18,6 +18,7 @@ type MessageMeta = {
   html: string | null;
   text: string | null;
   bodyLoaded: boolean;
+  attachments: AttachmentMeta[];
 };
 
 // ─── Gmail handler ────────────────────────────────────────────────────────────
@@ -49,6 +50,7 @@ async function getGmailMessages(accountId: string, gmailThreadId: string): Promi
   const lastPayload = fullRes.data.payload as GmailPart | undefined;
   const lastHtml = lastPayload ? findBody(lastPayload, "text/html") : null;
   const lastText = lastPayload ? findBody(lastPayload, "text/plain") : null;
+  const lastAttachments = lastPayload ? findAttachments(lastPayload) : [];
 
   return msgs.map((msg, i) => {
     const headers = msg.payload?.headers ?? [];
@@ -68,6 +70,7 @@ async function getGmailMessages(accountId: string, gmailThreadId: string): Promi
       html: isLast ? lastHtml : null,
       text: isLast ? lastText : null,
       bodyLoaded: isLast,
+      attachments: isLast ? lastAttachments : [],
     };
   });
 }
@@ -154,6 +157,9 @@ async function getImapMessages(accountId: string, threadId: string): Promise<Mes
           html: isLast ? lastHtml : null,
           text: isLast ? lastText : null,
           bodyLoaded: isLast,
+          // IMAP attachment listing requires a separate BODYSTRUCTURE fetch;
+          // flag presence only for now via the envelope data
+          attachments: [],
         };
       });
     } finally {

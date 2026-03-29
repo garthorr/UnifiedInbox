@@ -8,7 +8,7 @@ export function invalidateThreadCache(threadId: string) {
 }
 import {
   Loader2, ExternalLink, ChevronDown, ChevronUp,
-  ArchiveIcon, Trash2, Mail, MailOpen, Reply,
+  ArchiveIcon, Trash2, Mail, MailOpen, Reply, Paperclip,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ReplyCompose } from "./ReplyCompose";
@@ -26,6 +26,7 @@ interface Message {
   html: string | null;
   text: string | null;
   bodyLoaded: boolean;
+  attachments: { id: string; filename: string; mimeType: string; size: number }[];
 }
 
 interface EmailViewerProps {
@@ -313,6 +314,29 @@ export function EmailViewer({
                         <p className="text-sm text-slate-400">{msg.snippet}</p>
                       )}
                     </div>
+                    {/* Attachments */}
+                    {msg.attachments?.length > 0 && (
+                      <div className="px-4 pb-2 flex flex-wrap gap-1.5">
+                        {msg.attachments.map((att) => (
+                          <a
+                            key={att.id}
+                            href={`/api/threads/${threadId}/messages/${msg.id}/attachments/${att.id}`}
+                            download={att.filename}
+                            className="inline-flex items-center gap-1.5 rounded border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs text-slate-600 hover:bg-slate-100 transition-colors"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <Paperclip className="h-3 w-3 text-slate-400" />
+                            <span className="max-w-[160px] truncate">{att.filename}</span>
+                            <span className="text-slate-400">
+                              {att.size > 1024 * 1024
+                                ? `${(att.size / 1024 / 1024).toFixed(1)} MB`
+                                : `${Math.round(att.size / 1024)} KB`}
+                            </span>
+                          </a>
+                        ))}
+                      </div>
+                    )}
+
                     {/* Per-message reply button */}
                     <div className="px-4 pb-2 flex justify-end">
                       <button

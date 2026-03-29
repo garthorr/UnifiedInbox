@@ -87,6 +87,38 @@ function getHeader(
   );
 }
 
+// ─── Label sync ───────────────────────────────────────────────────────────────
+
+async function syncLabels(accountId: string, gmail: gmail_v1.Gmail): Promise<void> {
+  const { data } = await withRetry(() =>
+    gmail.users.labels.list({ userId: "me" })
+  );
+  const labels = data.labels ?? [];
+  await Promise.all(
+    labels.map((label) =>
+      prisma.label.upsert({
+        where: {
+          accountId_gmailLabelId: {
+            accountId,
+            gmailLabelId: label.id!,
+          },
+        },
+        create: {
+          accountId,
+          gmailLabelId: label.id!,
+          name: label.name!,
+          color: label.color?.backgroundColor ?? null,
+          type: label.type === "user" ? "user" : "system",
+        },
+        update: {
+          name: label.name!,
+          color: label.color?.backgroundColor ?? null,
+        },
+      })
+    )
+  );
+}
+
 // ─── Thread upsert ────────────────────────────────────────────────────────────
 
 async function upsertThread(
@@ -207,6 +239,9 @@ export async function initialSync(accountId: string): Promise<void> {
     },
   });
 
+  // Sync label names/colors so thread cards can display them
+  await syncLabels(accountId, gmail).catch(() => {}); // non-fatal
+
   const afterDate = new Date();
   afterDate.setDate(afterDate.getDate() - INITIAL_SYNC_DAYS);
   const afterStr = `${afterDate.getFullYear()}/${String(afterDate.getMonth() + 1).padStart(2, "0")}/${String(afterDate.getDate()).padStart(2, "0")}`;
@@ -285,6 +320,9 @@ export async function incrementalSync(accountId: string): Promise<void> {
 
   const gmail = await getGmailClient(accountId);
   const userId = "me";
+
+  // Keep label names fresh on every incremental sync (fast, non-fatal)
+  await syncLabels(accountId, gmail).catch(() => {});
 
   let historyItems: gmail_v1.Schema$History[] = [];
   let pageToken: string | undefined;

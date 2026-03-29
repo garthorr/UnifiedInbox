@@ -3,6 +3,7 @@ import { ThreadCard } from "./ThreadCard";
 interface Thread {
   id: string;
   gmailThreadId: string;
+  gmailLabelIds: string[];
   subject: string;
   snippet: string;
   participantAddresses: string[];
@@ -16,8 +17,11 @@ interface Thread {
   workItem: { id: string; title: string; status: string } | null;
 }
 
+type LabelInfo = { name: string; color: string | null };
+
 interface ThreadListProps {
   threads: Thread[];
+  labelMap?: Record<string, Record<string, LabelInfo>>;
   todoistEnabled?: boolean;
   selectedThreadId?: string | null;
   onSelectThread?: (id: string | null) => void;
@@ -25,6 +29,7 @@ interface ThreadListProps {
 
 export function ThreadList({
   threads,
+  labelMap = {},
   todoistEnabled = false,
   selectedThreadId,
   onSelectThread,
@@ -43,6 +48,9 @@ export function ThreadList({
         <ThreadCard
           key={thread.id}
           thread={thread}
+          labels={Object.entries(labelMap[thread.account.id] ?? {})
+            .filter(([lid]) => thread.gmailLabelIds.includes(lid))
+            .map(([, l]) => l)}
           todoistEnabled={todoistEnabled}
           isSelected={selectedThreadId === thread.id}
           onSelect={() =>

@@ -43,12 +43,15 @@ async function InboxContent({ searchParams }: PageProps) {
       : {}),
   };
 
-  const [accounts, threads, workItemResults] = await Promise.all([
-    prisma.account.findMany({
-      where: { isActive: true },
-      select: { id: true, email: true },
-      orderBy: { createdAt: "asc" },
-    }),
+  const accounts = await prisma.account.findMany({
+    where: { isActive: true },
+    select: { id: true, email: true },
+    orderBy: { createdAt: "asc" },
+  });
+
+  const accountIds = accounts.map((a) => a.id);
+
+  const [threads, workItemResults, labels] = await Promise.all([
     prisma.threadMirror.findMany({
       where: threadWhere,
       orderBy: { lastMessageAt: "desc" },
@@ -78,7 +81,18 @@ async function InboxContent({ searchParams }: PageProps) {
           },
         })
       : Promise.resolve([]),
+    prisma.label.findMany({
+      where: { type: "user", accountId: { in: accountIds } },
+      select: { accountId: true, gmailLabelId: true, name: true, color: true },
+    }),
   ]);
+
+  // label lookup: accountId → gmailLabelId → {name, color}
+  type LabelInfo = { name: string; color: string | null };
+  const labelMap: Record<string, Record<string, LabelInfo>> = {};
+  for (const l of labels) {
+    (labelMap[l.accountId] ??= {})[l.gmailLabelId] = { name: l.name, color: l.color };
+  }
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -112,7 +126,7 @@ async function InboxContent({ searchParams }: PageProps) {
           </div>
         </div>
       )}
-      <InboxPane threads={threads} todoistEnabled={todoistConfigured()} />
+      <InboxPane threads={threads} labelMap={labelMap} todoistEnabled={todoistConfigured()} />
     </div>
   );
 }

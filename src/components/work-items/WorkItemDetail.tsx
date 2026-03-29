@@ -25,7 +25,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { ThreadDrawer } from "@/components/inbox/ThreadDrawer";
+import { EmailViewer } from "@/components/inbox/EmailViewer";
 import {
   ExternalLink,
   Plus,
@@ -436,10 +436,10 @@ export function WorkItemDetail({ workItem, allDomains, todoistEnabled }: WorkIte
         </div>
       </div>
 
-      {/* Two-panel body */}
+      {/* Body: 2-panel normally, 3-panel when a thread is open */}
       <div className="flex-1 overflow-hidden flex">
         {/* Left: summary, notes, checklist */}
-        <div className="w-[360px] flex-shrink-0 border-r overflow-y-auto px-5 py-4 space-y-5">
+        <div className="w-[320px] flex-shrink-0 border-r overflow-y-auto px-5 py-4 space-y-5">
           {/* Notes */}
           <div>
             <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1.5 block">
@@ -719,8 +719,8 @@ export function WorkItemDetail({ workItem, allDomains, todoistEnabled }: WorkIte
           </div>
         </div>
 
-        {/* Right: threads, activity log */}
-        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
+        {/* Middle: threads + activity log */}
+        <div className={`${readingThread ? "w-[300px] flex-shrink-0" : "flex-1"} border-r overflow-y-auto px-5 py-4 space-y-5`}>
           {/* Threads */}
           <div>
             <div className="flex items-center justify-between mb-2">
@@ -734,7 +734,7 @@ export function WorkItemDetail({ workItem, allDomains, todoistEnabled }: WorkIte
                 onClick={() => setShowAttachModal(true)}
               >
                 <Plus className="h-3 w-3" />
-                Attach a Thread
+                Attach
               </Button>
             </div>
 
@@ -745,7 +745,9 @@ export function WorkItemDetail({ workItem, allDomains, todoistEnabled }: WorkIte
                 {workItem.threads.map((thread) => (
                   <div
                     key={thread.id}
-                    className="rounded-lg border bg-white px-3 py-2.5"
+                    className={`rounded-lg border px-3 py-2.5 transition-colors ${
+                      readingThread?.id === thread.id ? "bg-blue-50 border-blue-200" : "bg-white"
+                    }`}
                   >
                     <div className="flex items-start gap-2">
                       {thread.isUnread && (
@@ -754,7 +756,11 @@ export function WorkItemDetail({ workItem, allDomains, todoistEnabled }: WorkIte
                       <div className="min-w-0 flex-1">
                         <button
                           className="text-sm font-medium text-slate-800 truncate hover:text-blue-600 text-left w-full"
-                          onClick={() => setReadingThread({ id: thread.id, gmailThreadId: thread.gmailThreadId, subject: thread.subject })}
+                          onClick={() => setReadingThread(
+                            readingThread?.id === thread.id
+                              ? null
+                              : { id: thread.id, gmailThreadId: thread.gmailThreadId, subject: thread.subject }
+                          )}
                         >
                           {thread.subject}
                         </button>
@@ -813,6 +819,31 @@ export function WorkItemDetail({ workItem, allDomains, todoistEnabled }: WorkIte
             )}
           </div>
         </div>
+
+        {/* Right panel: inline email viewer when a thread is selected */}
+        {readingThread && (
+          <div className="flex-1 overflow-hidden flex flex-col">
+            <div className="flex-shrink-0 border-b px-4 py-2 flex items-center gap-2 bg-white">
+              <button
+                className="text-xs text-slate-400 hover:text-slate-700"
+                onClick={() => setReadingThread(null)}
+              >
+                ✕
+              </button>
+              <span className="text-xs text-slate-600 truncate">{readingThread.subject}</span>
+            </div>
+            <div className="flex-1 overflow-hidden">
+              <EmailViewer
+                threadId={readingThread.id}
+                gmailThreadId={readingThread.gmailThreadId}
+                subject={readingThread.subject}
+                isUnread={false}
+                onStale={() => setReadingThread(null)}
+                onUnreadChange={() => {}}
+              />
+            </div>
+          </div>
+        )}
       </div>
 
       {showAttachModal && (
@@ -821,8 +852,6 @@ export function WorkItemDetail({ workItem, allDomains, todoistEnabled }: WorkIte
           onClose={() => setShowAttachModal(false)}
         />
       )}
-
-      <ThreadDrawer thread={readingThread} onClose={() => setReadingThread(null)} />
     </div>
   );
 }

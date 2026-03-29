@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { Plus, Inbox, RefreshCw, Settings } from "lucide-react";
+import { Inbox, RefreshCw, Settings, Sunrise } from "lucide-react";
 
 interface Domain {
   id: string;
@@ -20,9 +20,10 @@ interface WorkItemCounts {
 interface DomainSidebarProps {
   domains: Domain[];
   counts: WorkItemCounts;
+  todayCount: number;
 }
 
-export function DomainSidebar({ domains, counts }: DomainSidebarProps) {
+export function DomainSidebar({ domains, counts, todayCount }: DomainSidebarProps) {
   const pathname = usePathname();
   const totalActive = counts.active + counts.waiting + counts.delegated;
 
@@ -36,6 +37,25 @@ export function DomainSidebar({ domains, counts }: DomainSidebarProps) {
 
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto px-2 py-2">
+        {/* Today */}
+        <Link
+          href="/today"
+          className={cn(
+            "flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors",
+            pathname === "/today"
+              ? "bg-slate-200 font-medium text-slate-900"
+              : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+          )}
+        >
+          <Sunrise className="h-4 w-4 flex-shrink-0" />
+          <span className="flex-1">Today</span>
+          {todayCount > 0 && (
+            <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-700">
+              {todayCount}
+            </span>
+          )}
+        </Link>
+
         {/* All / Unified Intake */}
         <Link
           href="/"

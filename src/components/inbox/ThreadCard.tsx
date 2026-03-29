@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button";
 import { gmailThreadUrl, relativeTime, primarySender, parseEmailDisplay } from "@/lib/utils";
 import { CreateWorkItemModal } from "@/components/work-items/CreateWorkItemModal";
 
+type LabelInfo = { name: string; color: string | null };
+
 interface ThreadCardProps {
   thread: {
     id: string;
@@ -25,6 +27,7 @@ interface ThreadCardProps {
     domain: { id: string; name: string; color: string } | null;
     workItem: { id: string; title: string; status: string } | null;
   };
+  labels?: LabelInfo[];
   todoistEnabled?: boolean;
   isSelected?: boolean;
   onSelect?: () => void;
@@ -32,6 +35,7 @@ interface ThreadCardProps {
 
 export const ThreadCard = memo(function ThreadCard({
   thread,
+  labels = [],
   todoistEnabled = false,
   isSelected = false,
   onSelect,
@@ -63,7 +67,7 @@ export const ThreadCard = memo(function ThreadCard({
 
         {/* Content — clicking selects the thread */}
         <div className="min-w-0 flex-1 cursor-pointer" onClick={onSelect}>
-          <div className="flex items-center gap-2 mb-0.5">
+          <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
             {thread.domain ? (
               <DomainBadge name={thread.domain.name} color={thread.domain.color} />
             ) : (
@@ -72,6 +76,19 @@ export const ThreadCard = memo(function ThreadCard({
             {thread.workItem && (
               <StatusBadge status={thread.workItem.status as never} />
             )}
+            {labels.map((label) => (
+              <span
+                key={label.name}
+                className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium"
+                style={{
+                  backgroundColor: label.color ? `${label.color}22` : "#e2e8f022",
+                  color: label.color ?? "#64748b",
+                  border: `1px solid ${label.color ? `${label.color}44` : "#cbd5e122"}`,
+                }}
+              >
+                {label.name}
+              </span>
+            ))}
           </div>
 
           <div className="flex items-center justify-between gap-2">
