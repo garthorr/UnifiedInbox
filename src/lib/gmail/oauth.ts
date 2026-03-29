@@ -3,7 +3,10 @@ import { randomBytes } from "crypto";
 import type { OAuth2Client } from "google-auth-library";
 
 export const GMAIL_SCOPES = [
-  "https://www.googleapis.com/auth/gmail.readonly",
+  // gmail.modify covers read, label management (archive/trash/markRead),
+  // and sending — narrower than mail.google.com but sufficient for all
+  // actions this app performs.
+  "https://www.googleapis.com/auth/gmail.modify",
   "https://www.googleapis.com/auth/userinfo.email",
   "https://www.googleapis.com/auth/userinfo.profile",
 ];

@@ -28,6 +28,7 @@ interface Account {
   id: string;
   email: string;
   displayName: string;
+  accountType: string;
   isActive: boolean;
   lastSyncAt: string | null;
   threadCount: number;
@@ -248,6 +249,16 @@ export function SettingsClient({ accounts: initialAccounts, todoist, domains: in
           <h2 className="text-sm font-semibold text-slate-700 mb-3">
             Connected Accounts
           </h2>
+
+          {accounts.some((a) => a.accountType === "GMAIL" && a.isActive) && (
+            <div className="mb-3 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-800">
+              <AlertCircle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-amber-500" />
+              <span>
+                Gmail permissions were recently updated to enable reply, archive, and trash.
+                If these actions return errors, disconnect and reconnect your Google account to grant the new permissions.
+              </span>
+            </div>
+          )}
 
           {accounts.length === 0 && (
             <p className="text-sm text-slate-400 mb-4">

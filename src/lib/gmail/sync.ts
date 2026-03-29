@@ -6,6 +6,30 @@ const INITIAL_SYNC_DAYS = 90;
 const INITIAL_SYNC_MAX_THREADS = 500;
 const METADATA_HEADERS = ["Subject", "From", "To", "Cc", "Date"];
 
+// ─── Retry helper ─────────────────────────────────────────────────────────────
+
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+/** Retry a Gmail API call on rate-limit (429) or server errors (5xx).
+ *  Back-off: 1 s → 2 s → 4 s (three attempts total). */
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  attempts = 3,
+  delayMs = 1000
+): Promise<T> {
+  try {
+    return await fn();
+  } catch (err: unknown) {
+    const code = (err as { code?: number }).code;
+    const retryable = code === 429 || (code !== undefined && code >= 500);
+    if (attempts > 1 && retryable) {
+      await sleep(delayMs);
+      return withRetry(fn, attempts - 1, delayMs * 2);
+    }
+    throw err;
+  }
+}
+
 // ─── Parsing helpers ──────────────────────────────────────────────────────────
 
 function extractAddresses(value: string): string[] {
@@ -147,12 +171,14 @@ async function fetchThreadMetadata(
   threadId: string
 ): Promise<gmail_v1.Schema$Thread | null> {
   try {
-    const { data } = await gmail.users.threads.get({
-      userId,
-      id: threadId,
-      format: "metadata",
-      metadataHeaders: METADATA_HEADERS,
-    });
+    const { data } = await withRetry(() =>
+      gmail.users.threads.get({
+        userId,
+        id: threadId,
+        format: "metadata",
+        metadataHeaders: METADATA_HEADERS,
+      })
+    );
     return data;
   } catch (err: unknown) {
     if (
@@ -190,12 +216,14 @@ export async function initialSync(accountId: string): Promise<void> {
   let totalFetched = 0;
 
   do {
-    const { data } = await gmail.users.threads.list({
-      userId,
-      q: `after:${afterStr}`,
-      maxResults: Math.min(100, INITIAL_SYNC_MAX_THREADS - totalFetched),
-      pageToken,
-    });
+    const { data } = await withRetry(() =>
+      gmail.users.threads.list({
+        userId,
+        q: `after:${afterStr}`,
+        maxResults: Math.min(100, INITIAL_SYNC_MAX_THREADS - totalFetched),
+        pageToken,
+      })
+    );
 
     const threads = data.threads ?? [];
     threadIds = threadIds.concat(threads.map((t) => t.id!));
@@ -264,12 +292,14 @@ export async function incrementalSync(accountId: string): Promise<void> {
 
   try {
     do {
-      const { data } = await gmail.users.history.list({
-        userId,
-        startHistoryId: account.historyId,
-        historyTypes: ["messageAdded", "labelAdded", "labelRemoved"],
-        pageToken,
-      });
+      const { data } = await withRetry(() =>
+        gmail.users.history.list({
+          userId,
+          startHistoryId: account.historyId ?? undefined,
+          historyTypes: ["messageAdded", "labelAdded", "labelRemoved"],
+          pageToken,
+        })
+      );
       historyItems = historyItems.concat(data.history ?? []);
       pageToken = data.nextPageToken ?? undefined;
       if (data.historyId) latestHistoryId = data.historyId;
