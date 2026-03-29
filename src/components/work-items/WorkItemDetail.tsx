@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { DomainBadge } from "@/components/shared/DomainBadge";
 import { AttachThreadModal } from "./AttachThreadModal";
+import { NotesEditor } from "./NotesEditor";
 import {
   Select,
   SelectContent,
@@ -24,6 +25,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { ThreadDrawer } from "@/components/inbox/ThreadDrawer";
 import {
   ExternalLink,
   Plus,
@@ -38,6 +40,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { gmailThreadUrl, relativeTime, formatDate } from "@/lib/utils";
+import { marked } from "marked";
 import type { WorkItemStatus } from "@prisma/client";
 
 interface Domain {
@@ -134,10 +137,27 @@ export function WorkItemDetail({ workItem, allDomains, todoistEnabled }: WorkIte
   const [domainId, setDomainId] = useState(workItem.domainId ?? "");
   const [showAttachModal, setShowAttachModal] = useState(false);
   const [detaching, setDetaching] = useState<string | null>(null);
+  const [readingThread, setReadingThread] = useState<{ id: string; gmailThreadId: string; subject: string } | null>(null);
+  const [dueDate, setDueDate] = useState(
+    workItem.dueDate ? new Date(workItem.dueDate).toISOString().slice(0, 10) : ""
+  );
+  const [editingDueDate, setEditingDueDate] = useState(false);
   const [saving, setSaving] = useState(false);
   const [todoistLoading, setTodoistLoading] = useState(false);
   const [todoistError, setTodoistError] = useState("");
   const todoistLink = workItem.taskLinks.find((tl) => tl.provider === "TODOIST") ?? null;
+
+  // Memoised markdown preview — only re-parses when notes content changes
+  const notesHtml = useMemo(() => marked.parse(notes) as string, [notes]);
+
+  // Current domain object lookup
+  const currentDomain = useMemo(
+    () => allDomains.find((d) => d.id === domainId) ?? null,
+    [allDomains, domainId]
+  );
+
+  // Debounce ref for patch calls — prevents API flood on rapid field changes
+  const patchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Todoist project picker state
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -145,17 +165,22 @@ export function WorkItemDetail({ workItem, allDomains, todoistEnabled }: WorkIte
   const [sections, setSections] = useState<{ id: string; name: string }[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [selectedSectionId, setSelectedSectionId] = useState("");
+  const [todoistDueDate, setTodoistDueDate] = useState(
+    workItem.dueDate ? new Date(workItem.dueDate).toISOString().slice(0, 10) : ""
+  );
   const [projectsLoading, setProjectsLoading] = useState(false);
   const [sectionsLoading, setSectionsLoading] = useState(false);
 
   const fetchProjects = useCallback(async () => {
     setProjectsLoading(true);
+    setTodoistError("");
     try {
       const res = await fetch("/api/todoist/projects");
-      if (!res.ok) throw new Error("Failed to load projects");
-      setProjects(await res.json());
-    } catch {
-      setTodoistError("Could not load Todoist projects");
+      if (!res.ok) throw new Error(`Failed to load projects (${res.status})`);
+      const data = await res.json();
+      setProjects(Array.isArray(data) ? data : []);
+    } catch (err) {
+      setTodoistError(err instanceof Error ? err.message : "Could not load Todoist projects");
     } finally {
       setProjectsLoading(false);
     }
@@ -163,12 +188,11 @@ export function WorkItemDetail({ workItem, allDomains, todoistEnabled }: WorkIte
 
   useEffect(() => {
     if (!pickerOpen) return;
-    fetchProjects();
     setSelectedProjectId("");
     setSelectedSectionId("");
     setSections([]);
-    setTodoistError("");
-  }, [pickerOpen, fetchProjects]);
+    if (projects.length === 0) fetchProjects();
+  }, [pickerOpen, projects.length, fetchProjects]);
 
   useEffect(() => {
     if (!selectedProjectId) { setSections([]); return; }
@@ -180,7 +204,7 @@ export function WorkItemDetail({ workItem, allDomains, todoistEnabled }: WorkIte
       .finally(() => setSectionsLoading(false));
   }, [selectedProjectId]);
 
-  async function patch(data: Record<string, unknown>) {
+  async function patchImmediate(data: Record<string, unknown>) {
     setSaving(true);
     try {
       const res = await fetch(`/api/work-items/${workItem.id}`, {
@@ -192,6 +216,15 @@ export function WorkItemDetail({ workItem, allDomains, todoistEnabled }: WorkIte
     } finally {
       setSaving(false);
     }
+  }
+
+  function patch(data: Record<string, unknown>, debounceMs = 0) {
+    if (debounceMs === 0) {
+      patchImmediate(data);
+      return;
+    }
+    if (patchTimerRef.current) clearTimeout(patchTimerRef.current);
+    patchTimerRef.current = setTimeout(() => patchImmediate(data), debounceMs);
   }
 
   async function handleStatusChange(newStatus: WorkItemStatus) {
@@ -214,7 +247,12 @@ export function WorkItemDetail({ workItem, allDomains, todoistEnabled }: WorkIte
 
   async function saveNotes() {
     setEditingNotes(false);
-    await patch({ notes });
+    patch({ notes }, 500);
+  }
+
+  async function saveDueDate() {
+    setEditingDueDate(false);
+    await patch({ dueDate: dueDate || null });
   }
 
   async function toggleCheckItem(index: number) {
@@ -258,6 +296,7 @@ export function WorkItemDetail({ workItem, allDomains, todoistEnabled }: WorkIte
       const body: Record<string, string> = {};
       if (selectedProjectId) body.projectId = selectedProjectId;
       if (selectedSectionId) body.sectionId = selectedSectionId;
+      if (todoistDueDate) body.dueDate = todoistDueDate;
       const res = await fetch(`/api/work-items/${workItem.id}/todoist`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -295,8 +334,6 @@ export function WorkItemDetail({ workItem, allDomains, todoistEnabled }: WorkIte
       setTodoistLoading(false);
     }
   }
-
-  const currentDomain = allDomains.find((d) => d.id === domainId);
 
   return (
     <div className="flex flex-col h-full">
@@ -358,11 +395,40 @@ export function WorkItemDetail({ workItem, allDomains, todoistEnabled }: WorkIte
               </SelectContent>
             </Select>
 
-            {workItem.dueDate && (
-              <span className="flex items-center gap-1 text-xs text-amber-600">
+            {editingDueDate ? (
+              <div className="flex items-center gap-1">
+                <Input
+                  type="date"
+                  value={dueDate}
+                  onChange={(e) => setDueDate(e.target.value)}
+                  className="h-6 text-xs w-36 px-1.5"
+                  autoFocus
+                />
+                <Button size="sm" className="h-6 text-xs px-2" onClick={saveDueDate}>
+                  Save
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-6 text-xs px-2"
+                  onClick={() => {
+                    setDueDate(workItem.dueDate ? new Date(workItem.dueDate).toISOString().slice(0, 10) : "");
+                    setEditingDueDate(false);
+                  }}
+                >
+                  Cancel
+                </Button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setEditingDueDate(true)}
+                className={`flex items-center gap-1 text-xs rounded px-1 -ml-1 hover:bg-slate-100 transition-colors ${
+                  dueDate ? "text-amber-600" : "text-slate-400"
+                }`}
+              >
                 <Calendar className="h-3 w-3" />
-                Due {formatDate(workItem.dueDate)}
-              </span>
+                {dueDate ? `Due ${formatDate(dueDate)}` : "Set due date"}
+              </button>
             )}
 
             {saving && <span className="text-xs text-slate-400">Saving...</span>}
@@ -380,37 +446,30 @@ export function WorkItemDetail({ workItem, allDomains, todoistEnabled }: WorkIte
               Notes
             </Label>
             {editingNotes ? (
-              <div className="space-y-1.5">
-                <Textarea
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  className="text-sm min-h-[120px] resize-none"
-                  autoFocus
-                />
-                <div className="flex gap-1.5">
-                  <Button size="sm" className="h-6 text-xs" onClick={saveNotes}>
-                    Save
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-6 text-xs"
-                    onClick={() => {
-                      setNotes(workItem.notes ?? "");
-                      setEditingNotes(false);
-                    }}
-                  >
-                    Cancel
-                  </Button>
-                </div>
-              </div>
+              <NotesEditor
+                value={notes}
+                onChange={setNotes}
+                onSave={saveNotes}
+                onCancel={() => {
+                  setNotes(workItem.notes ?? "");
+                  setEditingNotes(false);
+                }}
+              />
             ) : (
               <div
-                className="min-h-[60px] cursor-pointer rounded-md border border-dashed border-slate-200 px-3 py-2 text-sm text-slate-600 hover:border-slate-300 hover:bg-slate-50"
+                className="min-h-[60px] cursor-pointer rounded-md border border-dashed border-slate-200 px-3 py-2 hover:border-slate-300 hover:bg-slate-50"
                 onClick={() => setEditingNotes(true)}
               >
-                {notes || (
-                  <span className="text-slate-400">Add notes... (click to edit)</span>
+                {notes ? (
+                  <div
+                    className="text-sm text-slate-600 prose prose-slate prose-sm max-w-none pointer-events-none
+                      [&_h2]:text-sm [&_h2]:font-semibold [&_h2]:mt-1 [&_h2]:mb-0.5
+                      [&_ul]:my-0.5 [&_ul]:pl-4 [&_li]:my-0
+                      [&_p]:my-0.5 [&_strong]:font-semibold [&_em]:italic"
+                    dangerouslySetInnerHTML={{ __html: notesHtml }}
+                  />
+                ) : (
+                  <span className="text-sm text-slate-400">Add notes… (click to edit)</span>
                 )}
               </div>
             )}
@@ -484,6 +543,18 @@ export function WorkItemDetail({ workItem, allDomains, todoistEnabled }: WorkIte
                             <Loader2 className="h-3.5 w-3.5 animate-spin" />
                             Loading projects…
                           </div>
+                        ) : projects.length === 0 ? (
+                          <div className="rounded-md border px-3 py-4 text-center">
+                            <p className="text-xs text-slate-400">
+                              {todoistError ? todoistError : "No projects found"}
+                            </p>
+                            <button
+                              className="mt-2 text-xs text-blue-500 hover:underline"
+                              onClick={() => { setTodoistError(""); fetchProjects(); }}
+                            >
+                              Retry
+                            </button>
+                          </div>
                         ) : (
                           <div className="max-h-52 overflow-y-auto rounded-md border divide-y">
                             {projects.map((p) => (
@@ -552,7 +623,20 @@ export function WorkItemDetail({ workItem, allDomains, todoistEnabled }: WorkIte
                         </div>
                       )}
 
-                      {todoistError && (
+                      {/* Due date */}
+                      <div className="space-y-1">
+                        <p className="text-xs font-medium text-slate-500">
+                          Due date <span className="font-normal text-slate-400">(optional)</span>
+                        </p>
+                        <input
+                          type="date"
+                          value={todoistDueDate}
+                          onChange={(e) => setTodoistDueDate(e.target.value)}
+                          className="h-8 w-full rounded-md border border-slate-200 px-2 text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+
+                      {todoistError && projects.length > 0 && (
                         <p className="text-xs text-red-500">{todoistError}</p>
                       )}
 
@@ -668,9 +752,12 @@ export function WorkItemDetail({ workItem, allDomains, todoistEnabled }: WorkIte
                         <div className="mt-1.5 h-2 w-2 rounded-full bg-blue-500 flex-shrink-0" />
                       )}
                       <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium text-slate-800 truncate">
+                        <button
+                          className="text-sm font-medium text-slate-800 truncate hover:text-blue-600 text-left w-full"
+                          onClick={() => setReadingThread({ id: thread.id, gmailThreadId: thread.gmailThreadId, subject: thread.subject })}
+                        >
                           {thread.subject}
-                        </p>
+                        </button>
                         <p className="text-xs text-slate-500 mt-0.5">
                           {thread.account.email} · {thread.messageCount} msg
                           {thread.messageCount !== 1 ? "s" : ""} ·{" "}
@@ -734,6 +821,8 @@ export function WorkItemDetail({ workItem, allDomains, todoistEnabled }: WorkIte
           onClose={() => setShowAttachModal(false)}
         />
       )}
+
+      <ThreadDrawer thread={readingThread} onClose={() => setReadingThread(null)} />
     </div>
   );
 }

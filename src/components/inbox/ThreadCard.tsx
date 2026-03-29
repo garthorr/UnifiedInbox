@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, memo } from "react";
 import Link from "next/link";
 import { ExternalLink, Plus, ArrowRight, Paperclip } from "lucide-react";
 import { DomainBadge, UnassignedBadge } from "@/components/shared/DomainBadge";
@@ -25,9 +25,17 @@ interface ThreadCardProps {
     domain: { id: string; name: string; color: string } | null;
     workItem: { id: string; title: string; status: string } | null;
   };
+  todoistEnabled?: boolean;
+  isSelected?: boolean;
+  onSelect?: () => void;
 }
 
-export function ThreadCard({ thread }: ThreadCardProps) {
+export const ThreadCard = memo(function ThreadCard({
+  thread,
+  todoistEnabled = false,
+  isSelected = false,
+  onSelect,
+}: ThreadCardProps) {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const sender = parseEmailDisplay(
     primarySender(thread.participantAddresses, thread.account.email)
@@ -36,8 +44,12 @@ export function ThreadCard({ thread }: ThreadCardProps) {
   return (
     <>
       <div
-        className={`flex items-start gap-3 border-b px-4 py-3 hover:bg-slate-50 ${
-          thread.isUnread ? "bg-white" : "bg-slate-50/50"
+        className={`flex items-start gap-3 border-b px-4 py-3 ${
+          isSelected
+            ? "bg-blue-50 border-l-2 border-l-blue-500"
+            : thread.isUnread
+            ? "bg-white hover:bg-slate-50"
+            : "bg-slate-50/50 hover:bg-slate-100/60"
         }`}
       >
         {/* Unread indicator */}
@@ -49,8 +61,8 @@ export function ThreadCard({ thread }: ThreadCardProps) {
           )}
         </div>
 
-        {/* Content */}
-        <div className="min-w-0 flex-1">
+        {/* Content — clicking selects the thread */}
+        <div className="min-w-0 flex-1 cursor-pointer" onClick={onSelect}>
           <div className="flex items-center gap-2 mb-0.5">
             {thread.domain ? (
               <DomainBadge name={thread.domain.name} color={thread.domain.color} />
@@ -122,9 +134,10 @@ export function ThreadCard({ thread }: ThreadCardProps) {
       {showCreateModal && (
         <CreateWorkItemModal
           thread={thread}
+          todoistEnabled={todoistEnabled}
           onClose={() => setShowCreateModal(false)}
         />
       )}
     </>
   );
-}
+});

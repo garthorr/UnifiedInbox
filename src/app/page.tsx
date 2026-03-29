@@ -1,36 +1,56 @@
 import { Suspense } from "react";
+import Link from "next/link";
 import { prisma } from "@/lib/db";
+import { Prisma } from "@prisma/client";
+import { isConfigured as todoistConfigured } from "@/lib/todoist";
 import { AppShell } from "@/components/layout/AppShell";
 import { InboxFilters } from "@/components/inbox/InboxFilters";
-import { ThreadList } from "@/components/inbox/ThreadList";
+import { InboxPane } from "@/components/inbox/InboxPane";
+import { SyncAllButton } from "@/components/inbox/SyncAllButton";
+import { StatusBadge } from "@/components/shared/StatusBadge";
+import { DomainBadge } from "@/components/shared/DomainBadge";
 
 interface PageProps {
   searchParams: Promise<{
     accountId?: string;
     isUnread?: string;
     days?: string;
+    q?: string;
+    view?: string;
   }>;
 }
 
 async function InboxContent({ searchParams }: PageProps) {
   const params = await searchParams;
-  const days = parseInt(params.days ?? "7");
+  const q = params.q?.trim() ?? "";
+  const days = q ? 90 : parseInt(params.days ?? "7");
   const afterDate = new Date();
   afterDate.setDate(afterDate.getDate() - days);
 
-  const [accounts, threads] = await Promise.all([
+  const threadWhere = {
+    isStale: false,
+    lastMessageAt: { gte: afterDate },
+    ...(params.accountId ? { accountId: params.accountId } : {}),
+    ...(params.isUnread === "true" ? { isUnread: true } : {}),
+    ...(q
+      ? {
+          OR: [
+            { subject: { contains: q, mode: Prisma.QueryMode.insensitive } },
+            { snippet: { contains: q, mode: Prisma.QueryMode.insensitive } },
+            { participantAddresses: { hasSome: [q] } },
+          ],
+        }
+      : {}),
+  };
+
+  const [accounts, threads, workItemResults] = await Promise.all([
     prisma.account.findMany({
       where: { isActive: true },
       select: { id: true, email: true },
       orderBy: { createdAt: "asc" },
     }),
     prisma.threadMirror.findMany({
-      where: {
-        isStale: false,
-        lastMessageAt: { gte: afterDate },
-        ...(params.accountId ? { accountId: params.accountId } : {}),
-        ...(params.isUnread === "true" ? { isUnread: true } : {}),
-      },
+      where: threadWhere,
       orderBy: { lastMessageAt: "desc" },
       take: 100,
       include: {
@@ -39,20 +59,60 @@ async function InboxContent({ searchParams }: PageProps) {
         workItem: { select: { id: true, title: true, status: true } },
       },
     }),
+    q
+      ? prisma.workItem.findMany({
+          where: {
+            status: { not: "DONE" },
+            OR: [
+              { title: { contains: q, mode: Prisma.QueryMode.insensitive } },
+              { notes: { contains: q, mode: Prisma.QueryMode.insensitive } },
+            ],
+          },
+          orderBy: { updatedAt: "desc" },
+          take: 8,
+          select: {
+            id: true,
+            title: true,
+            status: true,
+            domain: { select: { id: true, name: true, color: true } },
+          },
+        })
+      : Promise.resolve([]),
   ]);
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="border-b bg-white px-6 py-3 flex items-center gap-4">
+    <div className="flex flex-col h-full overflow-hidden">
+      <div className="flex-shrink-0 border-b bg-white px-6 py-3 flex items-center gap-4">
         <h1 className="text-base font-semibold text-slate-900 shrink-0">Unified Intake</h1>
         <InboxFilters accounts={accounts} />
-        <span className="ml-auto text-xs text-slate-400">
-          {threads.length} thread{threads.length !== 1 ? "s" : ""}
-        </span>
+        <div className="ml-auto flex items-center gap-2">
+          <span className="text-xs text-slate-400">
+            {threads.length} thread{threads.length !== 1 ? "s" : ""}
+          </span>
+          <SyncAllButton />
+        </div>
       </div>
-      <div className="flex-1 overflow-y-auto">
-        <ThreadList threads={threads} />
-      </div>
+      {workItemResults.length > 0 && (
+        <div className="flex-shrink-0 border-b bg-slate-50 px-6 py-2">
+          <p className="text-[10px] uppercase tracking-wide text-slate-400 mb-1.5">
+            Work Items ({workItemResults.length})
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {workItemResults.map((wi) => (
+              <Link
+                key={wi.id}
+                href={`/work-items/${wi.id}`}
+                className="flex items-center gap-1.5 rounded-md border bg-white px-2.5 py-1.5 text-xs shadow-sm hover:shadow transition-shadow"
+              >
+                {wi.domain && <DomainBadge name={wi.domain.name} color={wi.domain.color} />}
+                <span className="font-medium text-slate-800 max-w-[200px] truncate">{wi.title}</span>
+                <StatusBadge status={wi.status} />
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+      <InboxPane threads={threads} todoistEnabled={todoistConfigured()} />
     </div>
   );
 }

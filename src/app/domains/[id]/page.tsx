@@ -1,9 +1,10 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { prisma } from "@/lib/db";
+import { isConfigured as todoistConfigured } from "@/lib/todoist";
 import { AppShell } from "@/components/layout/AppShell";
 import { WorkItemCard } from "@/components/work-items/WorkItemCard";
-import { ThreadCard } from "@/components/inbox/ThreadCard";
+import { DomainThreadsClient } from "@/components/domains/DomainThreadsClient";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Plus } from "lucide-react";
 import type { WorkItemStatus } from "@prisma/client";
@@ -109,11 +110,7 @@ export default async function DomainPage({ params }: PageProps) {
               <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Unlinked Threads ({unlinkedThreads.length})
               </h2>
-              <div className="rounded-lg border bg-white overflow-hidden">
-                {unlinkedThreads.map((thread) => (
-                  <ThreadCard key={thread.id} thread={thread} />
-                ))}
-              </div>
+              <DomainThreadsClient threads={unlinkedThreads} todoistEnabled={todoistConfigured()} />
             </section>
           )}
         </div>

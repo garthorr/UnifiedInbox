@@ -18,6 +18,7 @@ export async function POST(
   const body = await request.json().catch(() => ({})) as {
     projectId?: string;
     sectionId?: string;
+    dueDate?: string;
   };
 
   const workItem = await prisma.workItem.findUnique({
@@ -36,10 +37,12 @@ export async function POST(
     );
   }
 
+  const dueDate = body.dueDate ?? workItem.dueDate;
+
   const task = await createTask({
     title: workItem.title,
     notes: workItem.notes,
-    dueDate: workItem.dueDate,
+    dueDate,
     projectId: body.projectId ?? null,
     sectionId: body.sectionId ?? null,
   });
@@ -58,7 +61,10 @@ export async function POST(
     }),
     prisma.workItem.update({
       where: { id },
-      data: { status: "TODOIST" },
+      data: {
+        status: "TODOIST",
+        ...(body.dueDate ? { dueDate: new Date(body.dueDate) } : {}),
+      },
     }),
     prisma.activityLog.create({
       data: {

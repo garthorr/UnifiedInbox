@@ -206,14 +206,23 @@ export async function initialSync(accountId: string): Promise<void> {
   let maxHistoryId = "0";
   let synced = 0;
 
-  for (const threadId of threadIds) {
-    const thread = await fetchThreadMetadata(gmail, userId, threadId);
-    if (!thread) continue;
-    await upsertThread(accountId, thread);
-    synced++;
-    if (thread.historyId && thread.historyId > maxHistoryId) {
-      maxHistoryId = thread.historyId;
-    }
+  // Fetch and upsert in batches of 10 to parallelise without overwhelming the API
+  const BATCH = 10;
+  for (let i = 0; i < threadIds.length; i += BATCH) {
+    const batch = threadIds.slice(i, i + BATCH);
+    const threads = await Promise.all(
+      batch.map((id) => fetchThreadMetadata(gmail, userId, id))
+    );
+    await Promise.all(
+      threads.map(async (thread) => {
+        if (!thread) return;
+        await upsertThread(accountId, thread);
+        synced++;
+        if (thread.historyId && thread.historyId > maxHistoryId) {
+          maxHistoryId = thread.historyId;
+        }
+      })
+    );
   }
 
   await prisma.account.update({
@@ -251,6 +260,7 @@ export async function incrementalSync(accountId: string): Promise<void> {
 
   let historyItems: gmail_v1.Schema$History[] = [];
   let pageToken: string | undefined;
+  let latestHistoryId: string | undefined;
 
   try {
     do {
@@ -262,14 +272,16 @@ export async function incrementalSync(accountId: string): Promise<void> {
       });
       historyItems = historyItems.concat(data.history ?? []);
       pageToken = data.nextPageToken ?? undefined;
-
-      if (data.historyId) {
-        await prisma.account.update({
-          where: { id: accountId },
-          data: { historyId: data.historyId },
-        });
-      }
+      if (data.historyId) latestHistoryId = data.historyId;
     } while (pageToken);
+
+    // Persist the final historyId once after all pages are fetched
+    if (latestHistoryId) {
+      await prisma.account.update({
+        where: { id: accountId },
+        data: { historyId: latestHistoryId },
+      });
+    }
   } catch (err: unknown) {
     // historyId expired → fall back to initial sync
     if (
@@ -295,26 +307,35 @@ export async function incrementalSync(accountId: string): Promise<void> {
   }
 
   let synced = 0;
-  for (const threadId of affectedThreadIds) {
-    const thread = await fetchThreadMetadata(gmail, userId, threadId);
-    if (!thread) {
-      // Thread deleted/moved
-      await prisma.threadMirror.updateMany({
-        where: { gmailThreadId: threadId, accountId },
-        data: { isStale: true },
-      });
-      await prisma.activityLog.create({
-        data: {
-          eventType: "THREAD_STALE",
-          accountId,
-          description: `Thread no longer accessible in Gmail`,
-          metadata: { gmailThreadId: threadId },
-        },
-      });
-    } else {
-      await upsertThread(accountId, thread);
-      synced++;
-    }
+  const affectedIds = [...affectedThreadIds];
+  const BATCH = 10;
+  for (let i = 0; i < affectedIds.length; i += BATCH) {
+    const batch = affectedIds.slice(i, i + BATCH);
+    const threads = await Promise.all(
+      batch.map((id) => fetchThreadMetadata(gmail, userId, id))
+    );
+    await Promise.all(
+      batch.map(async (threadId, idx) => {
+        const thread = threads[idx];
+        if (!thread) {
+          await prisma.threadMirror.updateMany({
+            where: { gmailThreadId: threadId, accountId },
+            data: { isStale: true },
+          });
+          await prisma.activityLog.create({
+            data: {
+              eventType: "THREAD_STALE",
+              accountId,
+              description: `Thread no longer accessible in Gmail`,
+              metadata: { gmailThreadId: threadId },
+            },
+          });
+        } else {
+          await upsertThread(accountId, thread);
+          synced++;
+        }
+      })
+    );
   }
 
   await prisma.account.update({
@@ -339,15 +360,32 @@ export async function syncAccount(accountId: string): Promise<void> {
   if (!account || !account.isActive) return;
 
   try {
-    if (!account.historyId) {
-      await initialSync(accountId);
+    if (account.accountType === "IMAP") {
+      const { initialSync: imapInitial, incrementalSync: imapIncremental } =
+        await import("@/lib/imap/sync");
+      const isFirstSync = !account.historyId || account.historyId === "uid:0";
+      if (isFirstSync) {
+        await imapInitial(accountId);
+      } else {
+        await imapIncremental(accountId);
+      }
     } else {
-      await incrementalSync(accountId);
+      if (!account.historyId) {
+        await initialSync(accountId);
+      } else {
+        await incrementalSync(accountId);
+      }
     }
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     const isAuthError =
-      message.includes("401") || message.includes("invalid_grant");
+      message.includes("401") ||
+      message.includes("invalid_grant") ||
+      message.includes("Insufficient Permission") ||
+      message.includes("insufficientPermissions") ||
+      message.includes("403") ||
+      message.includes("Authentication failed") ||
+      message.includes("AUTHENTICATIONFAILED");
 
     if (isAuthError) {
       await prisma.account.update({

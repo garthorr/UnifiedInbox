@@ -18,12 +18,13 @@ export async function getGmailClient(
   const client = createOAuth2Client();
   client.setCredentials({
     access_token: decrypt(account.accessToken),
-    refresh_token: decrypt(account.refreshToken),
-    expiry_date: account.tokenExpiresAt.getTime(),
+    refresh_token: account.refreshToken ? decrypt(account.refreshToken) : undefined,
+    expiry_date: account.tokenExpiresAt?.getTime(),
   });
 
-  // Persist refreshed tokens automatically
-  client.on("tokens", async (tokens) => {
+  // Persist refreshed tokens automatically. Use once() to avoid listener accumulation
+  // if getGmailClient is called multiple times within the same request lifecycle.
+  client.once("tokens", async (tokens) => {
     const updates: Parameters<typeof prisma.account.update>[0]["data"] = {
       updatedAt: new Date(),
     };

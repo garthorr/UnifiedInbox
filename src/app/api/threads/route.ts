@@ -8,9 +8,11 @@ export async function GET(request: Request) {
   const domainId = searchParams.get("domainId");
   const isUnread = searchParams.get("isUnread");
   const unlinked = searchParams.get("unlinked"); // only threads with no workItemId
-  const limit = Math.min(parseInt(searchParams.get("limit") ?? "50"), 200);
+  const q = searchParams.get("q")?.trim().slice(0, 200) ?? "";
+  const limit = Math.min(Math.max(parseInt(searchParams.get("limit") ?? "50", 10) || 50, 1), 200);
   const cursor = searchParams.get("cursor");
-  const days = parseInt(searchParams.get("days") ?? "7");
+  // Expand date window when searching so results aren't artificially clipped
+  const days = q ? 90 : Math.max(parseInt(searchParams.get("days") ?? "7", 10) || 7, 1);
 
   const where: Prisma.ThreadMirrorWhereInput = {
     isStale: false,
@@ -21,7 +23,14 @@ export async function GET(request: Request) {
   if (isUnread === "true") where.isUnread = true;
   if (unlinked === "true") where.workItemId = null;
 
-  // Date filter
+  if (q) {
+    where.OR = [
+      { subject: { contains: q, mode: "insensitive" } },
+      { snippet: { contains: q, mode: "insensitive" } },
+    ];
+  }
+
+  // Date filter (skipped when a query is present — already expanded to 90 days above)
   const afterDate = new Date();
   afterDate.setDate(afterDate.getDate() - days);
   where.lastMessageAt = { gte: afterDate };
