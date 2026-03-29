@@ -21,7 +21,7 @@ interface TriageThread {
   isUnread: boolean;
   lastMessageAt: string;
   workItemId: string | null;
-  account: { id: string; email: string; displayName: string };
+  account: { id: string; email: string; displayName: string; color: string };
   domain: { id: string; name: string; color: string } | null;
   workItem: null;
 }
@@ -97,11 +97,10 @@ export function TodayClient({ triageThreads, activeItems, todoistEnabled }: Toda
                 return (
                   <div
                     key={t.id}
-                    className={`flex items-start gap-2.5 border-b px-3 py-2.5 cursor-pointer transition-colors ${
-                      isSelected
-                        ? "bg-blue-50 border-l-2 border-l-blue-500"
-                        : "hover:bg-slate-50"
+                    className={`flex items-start gap-2.5 border-b pl-2.5 pr-3 py-2.5 cursor-pointer transition-colors border-l-[3px] ${
+                      isSelected ? "bg-blue-50" : "hover:bg-slate-50"
                     }`}
+                    style={{ borderLeftColor: isSelected ? "#3b82f6" : t.account.color }}
                     onClick={() => setSelectedThreadId(isSelected ? null : t.id)}
                   >
                     <div className="mt-1.5 flex-shrink-0">

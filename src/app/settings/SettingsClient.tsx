@@ -29,6 +29,7 @@ interface Account {
   email: string;
   displayName: string;
   accountType: string;
+  color: string;
   isActive: boolean;
   lastSyncAt: string | null;
   threadCount: number;
@@ -194,6 +195,17 @@ export function SettingsClient({ accounts: initialAccounts, todoist, domains: in
     }
   }
 
+  async function updateAccountColor(id: string, color: string) {
+    const res = await fetch(`/api/accounts/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ color }),
+    });
+    if (res.ok) {
+      setAccounts((prev) => prev.map((a) => (a.id === id ? { ...a, color } : a)));
+    }
+  }
+
   async function syncAccount(id: string) {
     setSyncing(id);
     try {
@@ -272,12 +284,19 @@ export function SettingsClient({ accounts: initialAccounts, todoist, domains: in
                 key={account.id}
                 className="flex items-start gap-3 rounded-lg border bg-white px-4 py-3"
               >
-                <div className="mt-0.5 flex-shrink-0">
+                <div className="mt-0.5 flex-shrink-0 flex items-center gap-2">
                   {account.isActive ? (
                     <CheckCircle className="h-4 w-4 text-green-500" />
                   ) : (
                     <AlertCircle className="h-4 w-4 text-red-500" />
                   )}
+                  <input
+                    type="color"
+                    value={account.color}
+                    onChange={(e) => updateAccountColor(account.id, e.target.value)}
+                    className="h-5 w-5 cursor-pointer rounded border-0 p-0 bg-transparent"
+                    title="Account color"
+                  />
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-slate-800">

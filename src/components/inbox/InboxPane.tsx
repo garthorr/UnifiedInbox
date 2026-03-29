@@ -17,7 +17,7 @@ interface Thread {
   lastMessageAt: Date | string;
   workItemId: string | null;
   gmailLabelIds: string[];
-  account: { id: string; email: string; displayName: string };
+  account: { id: string; email: string; displayName: string; color: string };
   domain: { id: string; name: string; color: string } | null;
   workItem: { id: string; title: string; status: string } | null;
 }

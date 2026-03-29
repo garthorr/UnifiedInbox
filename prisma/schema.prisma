@@ -63,6 +63,7 @@ model Account {
   isActive        Boolean   @default(true)
   lastSyncAt      DateTime?
   historyId       String?   // Gmail history ID or "uid:<n>" for IMAP
+  color           String    @default("#6366f1") // user-chosen account color
   imapHost        String?
   imapPort        Int?
   smtpHost        String?

@@ -23,7 +23,7 @@ interface ThreadCardProps {
     isUnread: boolean;
     lastMessageAt: Date | string;
     workItemId: string | null;
-    account: { id: string; email: string; displayName: string };
+    account: { id: string; email: string; displayName: string; color: string };
     domain: { id: string; name: string; color: string } | null;
     workItem: { id: string; title: string; status: string } | null;
   };
@@ -48,13 +48,14 @@ export const ThreadCard = memo(function ThreadCard({
   return (
     <>
       <div
-        className={`flex items-start gap-3 border-b px-4 py-3 ${
+        className={`flex items-start gap-3 border-b pl-3 pr-4 py-3 border-l-[3px] ${
           isSelected
-            ? "bg-blue-50 border-l-2 border-l-blue-500"
+            ? "bg-blue-50"
             : thread.isUnread
             ? "bg-white hover:bg-slate-50"
             : "bg-slate-50/50 hover:bg-slate-100/60"
         }`}
+        style={{ borderLeftColor: isSelected ? "#3b82f6" : thread.account.color }}
       >
         {/* Unread indicator */}
         <div className="mt-1.5 flex-shrink-0">

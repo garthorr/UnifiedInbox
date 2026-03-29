@@ -57,7 +57,7 @@ async function InboxContent({ searchParams }: PageProps) {
       orderBy: { lastMessageAt: "desc" },
       take: 100,
       include: {
-        account: { select: { id: true, email: true, displayName: true } },
+        account: { select: { id: true, email: true, displayName: true, color: true } },
         domain: { select: { id: true, name: true, color: true } },
         workItem: { select: { id: true, title: true, status: true } },
       },

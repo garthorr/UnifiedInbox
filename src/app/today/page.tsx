@@ -18,7 +18,7 @@ export default async function TodayPage() {
       orderBy: { lastMessageAt: "desc" },
       take: 50,
       include: {
-        account: { select: { id: true, email: true, displayName: true } },
+        account: { select: { id: true, email: true, displayName: true, color: true } },
         domain: { select: { id: true, name: true, color: true } },
       },
     }),
