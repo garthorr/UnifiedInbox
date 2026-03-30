@@ -2,10 +2,6 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { messageCache } from "@/lib/client-message-cache";
-
-export function invalidateThreadCache(threadId: string) {
-  messageCache.delete(threadId);
-}
 import {
   Loader2, ExternalLink, ChevronDown, ChevronUp,
   ArchiveIcon, Trash2, Mail, MailOpen, Reply, Paperclip,
@@ -13,6 +9,10 @@ import {
 import { Button } from "@/components/ui/button";
 import { ReplyCompose } from "./ReplyCompose";
 import { gmailThreadUrl } from "@/lib/utils";
+
+export function invalidateThreadCache(threadId: string) {
+  messageCache.delete(threadId);
+}
 
 interface Message {
   id: string;

@@ -6,7 +6,8 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id: workItemId } = await params;
-  const { threadId } = (await request.json()) as { threadId: string };
+  const body = await request.json().catch(() => null);
+  const { threadId } = (body ?? {}) as { threadId?: string };
 
   if (!threadId) {
     return NextResponse.json({ error: "threadId is required" }, { status: 400 });

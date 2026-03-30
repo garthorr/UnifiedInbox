@@ -6,8 +6,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const body = await request.json();
-
+  const body = await request.json().catch(() => ({}));
   const { color } = body as { color?: string };
   if (!color || !/^#[0-9a-fA-F]{6}$/.test(color)) {
     return NextResponse.json({ error: "Invalid color" }, { status: 400 });
