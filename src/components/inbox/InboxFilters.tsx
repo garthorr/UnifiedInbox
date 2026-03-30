@@ -31,12 +31,11 @@ interface InboxFiltersProps {
   labels?: LabelOption[];
 }
 
-// Named view presets — each maps to a set of URL params
+// Time-range view presets — only change the days window, nothing else
 const VIEWS = [
-  { label: "This week",    params: { days: "7" } },
-  { label: "Unread",       params: { isUnread: "true", days: "14" } },
-  { label: "This month",   params: { days: "30" } },
-  { label: "Last 90 days", params: { days: "90" } },
+  { label: "This week",    days: "7"  },
+  { label: "This month",   days: "30" },
+  { label: "Last 90 days", days: "90" },
 ] as const;
 
 export function InboxFilters({ accounts, labels = [] }: InboxFiltersProps) {
@@ -98,25 +97,13 @@ export function InboxFilters({ accounts, labels = [] }: InboxFiltersProps) {
     updateParam("q", null);
   }
 
-  function applyView(viewParams: Record<string, string>) {
-    const params = new URLSearchParams();
-    // Preserve account and label filters across view switches
-    const currentAccount = searchParams.get("accountId");
-    if (currentAccount) params.set("accountId", currentAccount);
-    const currentLabel = searchParams.get("label");
-    if (currentLabel) params.set("label", currentLabel);
-    for (const [k, v] of Object.entries(viewParams)) {
-      if (v !== "7") params.set(k, v); // 7 days is the default, omit it
-    }
-    router.push(`${pathname}?${params.toString()}`);
+  function applyView(targetDays: string) {
+    // Only update the time window — preserve isUnread, label, account, q
+    updateParam("days", targetDays === "7" ? null : targetDays);
   }
 
-  // Determine which preset is active (ignores accountId)
-  const activeView = VIEWS.find(({ params: vp }) => {
-    const vpDays = vp.days ?? "7";
-    const vpUnread = ("isUnread" in vp && vp.isUnread === "true") ? "true" : null;
-    return days === vpDays && (vpUnread ? isUnread : !isUnread);
-  });
+  // Active view matches on days only
+  const activeViewDays = VIEWS.find((v) => v.days === days)?.days ?? null;
 
   return (
     <div className="flex flex-col gap-2 flex-1 min-w-0">
@@ -224,15 +211,15 @@ export function InboxFilters({ accounts, labels = [] }: InboxFiltersProps) {
         </Select>
       </div>
 
-      {/* Row 2: saved view presets */}
+      {/* Row 2: time-range presets */}
       <div className="flex items-center gap-1">
-        <span className="text-[10px] uppercase tracking-wide text-slate-400 mr-1">Views:</span>
+        <span className="text-[10px] uppercase tracking-wide text-slate-400 mr-1">Range:</span>
         {VIEWS.map((v) => (
           <button
             key={v.label}
-            onClick={() => applyView(v.params)}
+            onClick={() => applyView(v.days)}
             className={`px-2 py-0.5 rounded text-[11px] transition-colors ${
-              activeView?.label === v.label
+              activeViewDays === v.days
                 ? "bg-slate-800 text-white"
                 : "bg-slate-100 text-slate-600 hover:bg-slate-200"
             }`}
