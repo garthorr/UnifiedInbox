@@ -3,7 +3,7 @@
 A private, self-hosted Gmail dashboard that consolidates multiple accounts into a single
 work console, organizing threads into work items grouped by responsibility area.
 
-> **Status:** Phase 1 complete — MVP running. OAuth, Gmail sync, unified inbox, domains, and work items are operational.
+> **Status:** Phase 1–3 complete. OAuth, Gmail sync, unified inbox, domains, work items, label filtering, account color coding, and Todoist integration are operational.
 
 ---
 
@@ -52,6 +52,10 @@ GOOGLE_REDIRECT_URI=http://inbox.yourhostname.com:3000/api/auth/callback
 ENCRYPTION_KEY=$(openssl rand -hex 32)
 APP_SECRET=any_strong_password
 APP_URL=http://inbox.yourhostname.com:3000
+
+# Optional: Todoist integration
+TODOIST_API_KEY=your_todoist_api_token
+TODOIST_PROJECT_ID=          # leave blank to send to Todoist inbox
 ```
 
 > **Google OAuth does not accept bare IP addresses** as redirect URIs. Use a real hostname —
@@ -79,8 +83,14 @@ docker compose build
 docker compose up
 ```
 
-The web container automatically runs `prisma db push` and seeds the database on first start.
+The web container automatically runs `prisma migrate deploy` and seeds the database on first start.
 Visit `http://<your-host>:3000`.
+
+> **Running migrations manually** — if you need to run migrations interactively (e.g. `migrate dev`),
+> always do so inside the container to use the correct Prisma version:
+> ```bash
+> docker compose exec web npx prisma migrate dev --name my_migration
+> ```
 
 ### 3. Connect Gmail accounts
 
@@ -143,15 +153,31 @@ docs/                 # Phase 0 design documents
 
 ## Environment Variables
 
-| Variable | Description |
-|---|---|
-| `DATABASE_URL` | PostgreSQL connection string |
-| `GOOGLE_CLIENT_ID` | Google OAuth client ID |
-| `GOOGLE_CLIENT_SECRET` | Google OAuth client secret |
-| `GOOGLE_REDIRECT_URI` | OAuth callback URL (must match Google Console) |
-| `ENCRYPTION_KEY` | 32-byte hex key for token encryption (openssl rand -hex 32) |
-| `APP_SECRET` | Password to access the app |
-| `APP_URL` | Base URL of the app (used in OAuth redirects) |
+| Variable | Required | Description |
+|---|---|---|
+| `DATABASE_URL` | Yes | PostgreSQL connection string |
+| `GOOGLE_CLIENT_ID` | Yes | Google OAuth client ID |
+| `GOOGLE_CLIENT_SECRET` | Yes | Google OAuth client secret |
+| `GOOGLE_REDIRECT_URI` | Yes | OAuth callback URL (must match Google Console) |
+| `ENCRYPTION_KEY` | Yes | 32-byte hex key for token encryption (`openssl rand -hex 32`) |
+| `APP_SECRET` | Yes | Password to access the app |
+| `APP_URL` | Yes | Base URL of the app (used in OAuth redirects) |
+| `TODOIST_API_KEY` | No | Todoist API token — enables "Export to Todoist" on work items |
+| `TODOIST_PROJECT_ID` | No | Target Todoist project ID; omit to send to inbox |
+
+---
+
+## Features
+
+- **Unified inbox** — all Gmail accounts in a single view, sorted by recency
+- **Label filtering** — filter by Gmail labels or show Inbox-only with one click
+- **Account color coding** — each connected account gets a color shown as a left-border stripe on threads; customizable in Settings
+- **Work items** — group related threads from multiple accounts into a named work item with status, notes, checklist, and due date
+- **Domains** — organize work items by responsibility area (e.g. a volunteer role, project, or team)
+- **Todoist export** — push a work item to Todoist with thread links attached; marks work item DONE when Todoist task is completed
+- **Background sync** — worker syncs all accounts every 15 minutes via Gmail incremental history API
+- **Activity log** — full audit trail of sync events, status changes, and thread attachments
+- **Single-user auth** — password-protected, session cookie, no external auth service needed
 
 ---
 
@@ -161,8 +187,8 @@ docs/                 # Phase 0 design documents
 |---|---|---|
 | 0 | Definition and design | **Complete** |
 | 1 | MVP: OAuth, sync, unified inbox, domains, work items | **Complete** |
-| 2 | Daily usability: saved views, notes, search, activity log | Pending |
-| 3 | Todoist integration | Pending |
+| 2 | Daily usability: search, activity log, label filtering, account colors | **Complete** |
+| 3 | Todoist integration | **Complete** |
 | 4 | Rules engine and auto-suggestions | Pending |
 | 5 | Local AI (Ollama) assistance | Pending |
 | 6 | Mature console: OpenProject, calendar, mobile | Pending |
