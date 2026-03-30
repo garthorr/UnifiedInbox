@@ -17,6 +17,7 @@ interface PageProps {
     days?: string;
     q?: string;
     view?: string;
+    label?: string;
   }>;
 }
 
@@ -32,6 +33,7 @@ async function InboxContent({ searchParams }: PageProps) {
     lastMessageAt: { gte: afterDate },
     ...(params.accountId ? { accountId: params.accountId } : {}),
     ...(params.isUnread === "true" ? { isUnread: true } : {}),
+    ...(params.label ? { gmailLabelIds: { has: params.label } } : {}),
     ...(q
       ? {
           OR: [
@@ -82,23 +84,26 @@ async function InboxContent({ searchParams }: PageProps) {
         })
       : Promise.resolve([]),
     prisma.label.findMany({
-      where: { type: "user", accountId: { in: accountIds } },
-      select: { accountId: true, gmailLabelId: true, name: true, color: true },
+      where: { accountId: { in: accountIds } },
+      select: { accountId: true, gmailLabelId: true, name: true, color: true, type: true },
+      orderBy: { name: "asc" },
     }),
   ]);
 
-  // label lookup: accountId → gmailLabelId → {name, color}
+  // label lookup for chips: accountId → gmailLabelId → {name, color} (user labels only)
   type LabelInfo = { name: string; color: string | null };
   const labelMap: Record<string, Record<string, LabelInfo>> = {};
   for (const l of labels) {
-    (labelMap[l.accountId] ??= {})[l.gmailLabelId] = { name: l.name, color: l.color };
+    if (l.type === "user") {
+      (labelMap[l.accountId] ??= {})[l.gmailLabelId] = { name: l.name, color: l.color };
+    }
   }
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <div className="flex-shrink-0 border-b bg-white px-6 py-3 flex items-center gap-4">
         <h1 className="text-base font-semibold text-slate-900 shrink-0">Unified Intake</h1>
-        <InboxFilters accounts={accounts} />
+        <InboxFilters accounts={accounts} labels={labels} />
         <div className="ml-auto flex items-center gap-2">
           <span className="text-xs text-slate-400">
             {threads.length} thread{threads.length !== 1 ? "s" : ""}

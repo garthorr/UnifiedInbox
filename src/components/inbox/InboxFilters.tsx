@@ -11,15 +11,24 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Search, X } from "lucide-react";
+import { Search, X, Tag } from "lucide-react";
 
 interface Account {
   id: string;
   email: string;
 }
 
+interface LabelOption {
+  gmailLabelId: string;
+  name: string;
+  color: string | null;
+  type: string;
+  accountId: string;
+}
+
 interface InboxFiltersProps {
   accounts: Account[];
+  labels?: LabelOption[];
 }
 
 // Named view presets — each maps to a set of URL params
@@ -30,7 +39,7 @@ const VIEWS = [
   { label: "Last 90 days", params: { days: "90" } },
 ] as const;
 
-export function InboxFilters({ accounts }: InboxFiltersProps) {
+export function InboxFilters({ accounts, labels = [] }: InboxFiltersProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -39,6 +48,15 @@ export function InboxFilters({ accounts }: InboxFiltersProps) {
   const isUnread = searchParams.get("isUnread") === "true";
   const days = searchParams.get("days") ?? "7";
   const q = searchParams.get("q") ?? "";
+  const activeLabel = searchParams.get("label") ?? "";
+
+  // Deduplicate labels by name for the picker (keep first occurrence per name)
+  const labelOptions = labels
+    .filter((l) => l.type === "user")
+    .reduce<LabelOption[]>((acc, l) => {
+      if (!acc.some((x) => x.name === l.name)) acc.push(l);
+      return acc;
+    }, []);
 
   // Local state for the search input so it doesn't push on every keystroke
   const [searchDraft, setSearchDraft] = useState(q);
@@ -82,9 +100,11 @@ export function InboxFilters({ accounts }: InboxFiltersProps) {
 
   function applyView(viewParams: Record<string, string>) {
     const params = new URLSearchParams();
-    // Preserve account filter across view switches
+    // Preserve account and label filters across view switches
     const currentAccount = searchParams.get("accountId");
     if (currentAccount) params.set("accountId", currentAccount);
+    const currentLabel = searchParams.get("label");
+    if (currentLabel) params.set("label", currentLabel);
     for (const [k, v] of Object.entries(viewParams)) {
       if (v !== "7") params.set(k, v); // 7 days is the default, omit it
     }
@@ -146,6 +166,45 @@ export function InboxFilters({ accounts }: InboxFiltersProps) {
         >
           Unread only
         </Button>
+
+        {/* Inbox-only toggle */}
+        <Button
+          variant={activeLabel === "INBOX" ? "default" : "outline"}
+          size="sm"
+          className="h-8 text-xs"
+          onClick={() => updateParam("label", activeLabel === "INBOX" ? null : "INBOX")}
+        >
+          Inbox
+        </Button>
+
+        {/* Label picker */}
+        {labelOptions.length > 0 && (
+          <Select
+            value={activeLabel && activeLabel !== "INBOX" ? activeLabel : "__none__"}
+            onValueChange={(v) => updateParam("label", v === "__none__" ? null : v)}
+          >
+            <SelectTrigger className={`h-8 w-[150px] text-xs gap-1.5 ${activeLabel && activeLabel !== "INBOX" ? "border-blue-400 text-blue-700" : ""}`}>
+              <Tag className="h-3 w-3 flex-shrink-0 text-slate-400" />
+              <SelectValue placeholder="Label…" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none__">All labels</SelectItem>
+              {labelOptions.map((l) => (
+                <SelectItem key={l.gmailLabelId} value={l.gmailLabelId}>
+                  <span className="flex items-center gap-2">
+                    {l.color && (
+                      <span
+                        className="h-2 w-2 rounded-full flex-shrink-0 inline-block"
+                        style={{ backgroundColor: l.color }}
+                      />
+                    )}
+                    {l.name}
+                  </span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
 
         <Select
           value={days}
