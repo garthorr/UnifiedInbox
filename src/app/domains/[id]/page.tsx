@@ -1,13 +1,18 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
+import { Suspense } from "react";
 import { prisma } from "@/lib/db";
 import { isConfigured as todoistConfigured } from "@/lib/todoist";
 import { AppShell } from "@/components/layout/AppShell";
 import { WorkItemCard } from "@/components/work-items/WorkItemCard";
+import { KanbanBoard } from "@/components/work-items/KanbanBoard";
 import { DomainThreadsClient } from "@/components/domains/DomainThreadsClient";
+import { DomainViewToggle } from "@/components/domains/DomainViewToggle";
+import { KanbanConfigDialog } from "@/components/domains/KanbanConfigDialog";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Plus } from "lucide-react";
 import type { WorkItemStatus } from "@prisma/client";
+import type { KanbanColumnConfig } from "@/app/api/domains/[id]/kanban-config/route";
 
 const STATUS_ORDER: WorkItemStatus[] = ["ACTIVE", "WAITING", "DELEGATED", "NEW", "TODOIST"];
 const STATUS_LABELS: Record<WorkItemStatus, string> = {
@@ -19,16 +24,30 @@ const STATUS_LABELS: Record<WorkItemStatus, string> = {
   DONE: "Done",
 };
 
-interface PageProps {
-  params: Promise<{ id: string }>;
+function resolveKanbanColumns(stored: unknown): KanbanColumnConfig[] {
+  if (Array.isArray(stored) && stored.length > 0) {
+    return stored as KanbanColumnConfig[];
+  }
+  return STATUS_ORDER.map((status) => ({
+    status,
+    label: STATUS_LABELS[status],
+    visible: true,
+  }));
 }
 
-export default async function DomainPage({ params }: PageProps) {
+interface PageProps {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ view?: string }>;
+}
+
+export default async function DomainPage({ params, searchParams }: PageProps) {
   const { id } = await params;
+  const { view } = await searchParams;
+  const isKanban = view === "kanban";
 
   const domain = await prisma.domain.findUnique({
     where: { id },
-    select: { id: true, name: true, color: true },
+    select: { id: true, name: true, color: true, kanbanColumns: true },
   });
 
   if (!domain) notFound();
@@ -51,7 +70,9 @@ export default async function DomainPage({ params }: PageProps) {
     }),
   ]);
 
-  // Group work items by status
+  const kanbanColumns = resolveKanbanColumns(domain.kanbanColumns);
+
+  // Group work items by status for the list view
   const grouped = new Map<WorkItemStatus, typeof workItems>();
   for (const status of STATUS_ORDER) {
     const items = workItems.filter((wi) => wi.status === status);
@@ -75,7 +96,13 @@ export default async function DomainPage({ params }: PageProps) {
             />
             <h1 className="text-base font-semibold text-slate-900">{domain.name}</h1>
           </div>
-          <div className="ml-auto">
+          <div className="ml-auto flex items-center gap-2">
+            <Suspense>
+              <DomainViewToggle />
+            </Suspense>
+            {isKanban && (
+              <KanbanConfigDialog domainId={domain.id} columns={kanbanColumns} />
+            )}
             <Link href={`/?domainId=${domain.id}`}>
               <Button variant="outline" size="sm" className="h-7 gap-1 text-xs">
                 <Plus className="h-3 w-3" />
@@ -85,35 +112,59 @@ export default async function DomainPage({ params }: PageProps) {
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6">
-          {grouped.size === 0 && unlinkedThreads.length === 0 && (
-            <p className="py-12 text-center text-sm text-slate-400">
-              No active work items or unlinked threads in this domain.
-            </p>
-          )}
+        {isKanban ? (
+          <div className="flex-1 overflow-auto px-6 py-4">
+            <KanbanBoard
+              workItems={workItems}
+              domainId={domain.id}
+              columns={kanbanColumns}
+            />
+            {unlinkedThreads.length > 0 && (
+              <section className="mt-6">
+                <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Unlinked Threads ({unlinkedThreads.length})
+                </h2>
+                <DomainThreadsClient
+                  threads={unlinkedThreads}
+                  todoistEnabled={todoistConfigured()}
+                />
+              </section>
+            )}
+          </div>
+        ) : (
+          <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6">
+            {grouped.size === 0 && unlinkedThreads.length === 0 && (
+              <p className="py-12 text-center text-sm text-slate-400">
+                No active work items or unlinked threads in this domain.
+              </p>
+            )}
 
-          {Array.from(grouped.entries()).map(([status, items]) => (
-            <section key={status}>
-              <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                {STATUS_LABELS[status]} ({items.length})
-              </h2>
-              <div className="space-y-2">
-                {items.map((wi) => (
-                  <WorkItemCard key={wi.id} workItem={wi} />
-                ))}
-              </div>
-            </section>
-          ))}
+            {Array.from(grouped.entries()).map(([status, items]) => (
+              <section key={status}>
+                <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  {STATUS_LABELS[status]} ({items.length})
+                </h2>
+                <div className="space-y-2">
+                  {items.map((wi) => (
+                    <WorkItemCard key={wi.id} workItem={wi} />
+                  ))}
+                </div>
+              </section>
+            ))}
 
-          {unlinkedThreads.length > 0 && (
-            <section>
-              <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Unlinked Threads ({unlinkedThreads.length})
-              </h2>
-              <DomainThreadsClient threads={unlinkedThreads} todoistEnabled={todoistConfigured()} />
-            </section>
-          )}
-        </div>
+            {unlinkedThreads.length > 0 && (
+              <section>
+                <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Unlinked Threads ({unlinkedThreads.length})
+                </h2>
+                <DomainThreadsClient
+                  threads={unlinkedThreads}
+                  todoistEnabled={todoistConfigured()}
+                />
+              </section>
+            )}
+          </div>
+        )}
       </div>
     </AppShell>
   );
