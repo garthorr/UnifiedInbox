@@ -40,9 +40,11 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
   const { domains, counts, todayCount } = await getSidebarData();
 
   return (
-    <div className="flex h-screen overflow-hidden">
-      <DomainSidebar domains={domains} counts={counts} todayCount={todayCount} />
-      <main className="flex-1 overflow-hidden">{children}</main>
+    <div className="flex h-screen items-stretch justify-center">
+      <div className="flex w-full max-w-[1600px] overflow-hidden shadow-sm">
+        <DomainSidebar domains={domains} counts={counts} todayCount={todayCount} />
+        <main className="flex-1 overflow-hidden bg-white">{children}</main>
+      </div>
     </div>
   );
 }
