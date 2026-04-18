@@ -113,14 +113,15 @@ model ThreadMirror {
 }
 
 model Domain {
-  id          String     @id @default(uuid())
-  name        String     @unique
-  color       String     @default("#6366f1")
-  description String?
-  isActive    Boolean    @default(true)
-  sortOrder   Int        @default(0)
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
+  id             String     @id @default(uuid())
+  name           String     @unique
+  color          String     @default("#6366f1")
+  description    String?
+  isActive       Boolean    @default(true)
+  sortOrder      Int        @default(0)
+  kanbanColumns  Json?      // KanbanColumnConfig[] — null means use defaults
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
 
   workItems   WorkItem[]
   threads     ThreadMirror[]
