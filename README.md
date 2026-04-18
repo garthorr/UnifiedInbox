@@ -1,31 +1,43 @@
 # UnifiedInbox — Email Work Console
 
-A private, self-hosted Gmail dashboard that consolidates multiple accounts into a single
-work console, organizing threads into work items grouped by responsibility area.
-
-> **Status:** Phase 1 complete — MVP running. OAuth, Gmail sync, unified inbox, domains, and work items are operational.
+A private, self-hosted email dashboard that consolidates multiple Gmail and IMAP accounts into a
+single work console, organizing threads into work items grouped by responsibility area.
 
 ---
 
 ## What This Is
 
-A private self-hosted web app that sits on top of multiple Gmail accounts and converts email into
-organized work items without changing how senders interact with you. Gmail remains the system of
-record. The app adds a coordination layer on top.
+A private self-hosted web app that sits on top of your email accounts and converts email threads
+into organized work items — without changing how senders interact with you. Email remains the
+system of record. The app adds a coordination layer on top.
 
-In one sentence: **a cross-account work console that groups related threads into work items
-organized by responsibility area.**
+In one sentence: **a cross-account work console that turns email threads into work items,
+organized by domain, with Kanban or list views and optional Todoist export.**
 
 Everything runs on your own hardware. No email content is sent to any third party.
-OAuth tokens are encrypted at rest. The app is only reachable on your local network.
+OAuth tokens and passwords are encrypted at rest. The app is only reachable on your local network.
+
+---
+
+## Features
+
+- **Unified inbox** — multiple Gmail and IMAP accounts in one view, filterable by account, unread status, and date range
+- **Domains** — define responsibility areas (projects, roles, organizations) and assign threads to them automatically or manually
+- **Work items** — convert one or more threads into a tracked item with title, status, notes (Markdown), checklist, and due date
+- **Kanban board view** — per-domain board with configurable columns: toggle visibility, rename labels, reorder; drag cards between columns to update status
+- **List view** — traditional grouped-by-status list, available alongside the board view
+- **Todoist integration** — export work items to Todoist as tasks; completion syncs back automatically
+- **IMAP support** — connect any IMAP/SMTP mailbox in addition to Gmail OAuth accounts
+- **Activity log** — full audit trail of sync events and item changes
+- **Background sync** — cron worker keeps threads current and syncs external task state
 
 ---
 
 ## Domains
 
-Domains are the responsibility areas you want to track — for example, a volunteer organization,
-a side project, a family, or a work role. You define them to match your own life. The seed
-data includes examples; edit or replace them from the Settings page after first run.
+Domains are the responsibility areas you want to track — a volunteer organization, a side project,
+a family, or a work role. You define them to match your own life. The seed data includes examples;
+edit or replace them from the Settings page after first run.
 
 ---
 
@@ -34,7 +46,8 @@ data includes examples; edit or replace them from the Settings page after first 
 ### Prerequisites
 
 - Docker + Docker Compose
-- A Google Cloud project with Gmail API enabled and OAuth 2.0 credentials
+- A Google Cloud project with Gmail API enabled and OAuth 2.0 credentials (for Gmail accounts)
+- Any IMAP/SMTP credentials (for non-Gmail accounts)
 
 ### 1. Clone and configure
 
@@ -52,6 +65,10 @@ GOOGLE_REDIRECT_URI=http://inbox.yourhostname.com:3000/api/auth/callback
 ENCRYPTION_KEY=$(openssl rand -hex 32)
 APP_SECRET=any_strong_password
 APP_URL=http://inbox.yourhostname.com:3000
+
+# Optional — Todoist integration
+TODOIST_API_KEY=
+TODOIST_PROJECT_ID=
 ```
 
 > **Google OAuth does not accept bare IP addresses** as redirect URIs. Use a real hostname —
@@ -69,8 +86,8 @@ APP_URL=http://inbox.yourhostname.com:3000
 > 192.168.1.x  inbox.local
 > ```
 > Then use `http://inbox.local:3000` for both `APP_URL` and `GOOGLE_REDIRECT_URI`.
-> Also add `http://inbox.local:3000/api/auth/callback` as an authorized redirect URI in Google
-> Cloud Console.
+> Also add `http://inbox.local:3000/api/auth/callback` as an authorized redirect URI in the
+> Google Cloud Console.
 
 ### 2. Build and run
 
@@ -82,12 +99,23 @@ docker compose up
 The web container automatically runs `prisma db push` and seeds the database on first start.
 Visit `http://<your-host>:3000`.
 
-### 3. Connect Gmail accounts
+### 3. Connect accounts
 
 1. Log in with your `APP_SECRET`
 2. Go to **Settings → Accounts**
-3. Click **Connect Gmail** and complete OAuth for each account
-4. The background worker syncs threads automatically
+3. Click **Connect Gmail** to add a Gmail account via OAuth, or **Add IMAP Account** to connect
+   any IMAP/SMTP mailbox
+4. The background worker syncs threads automatically every 15 minutes
+
+---
+
+## Todoist Integration
+
+Set `TODOIST_API_KEY` in `.env` (Settings → Integrations → Developer in Todoist). Once enabled:
+
+- Open any work item and click **Export to Todoist**
+- Choose a project and optional section; a task is created in Todoist
+- When you complete the task in Todoist, the work item status updates to **Done** automatically
 
 ---
 
@@ -98,10 +126,12 @@ Visit `http://<your-host>:3000`.
 | Frontend | Next.js 15 + Tailwind CSS + shadcn/ui |
 | Backend | Next.js API routes |
 | Database | PostgreSQL 16 + Prisma |
-| Auth | Google OAuth 2.0 (Gmail API) |
-| Background jobs | Node.js worker (ts-node) |
+| Gmail auth | Google OAuth 2.0 (Gmail API) |
+| IMAP/SMTP | ImapFlow + Nodemailer |
+| Drag and drop | dnd-kit |
+| Background jobs | Node.js worker (ts-node + node-cron) |
+| Token encryption | AES-256-GCM |
 | Hosting | Self-hosted Docker Compose |
-| AI | Local Ollama endpoint (Phase 5) |
 
 ---
 
@@ -111,47 +141,62 @@ Visit `http://<your-host>:3000`.
 src/
   app/
     api/
-      accounts/       # Gmail account management
-      activity-log/   # Audit log endpoints
-      auth/           # Google OAuth callback
-      domains/        # Domain CRUD
-      threads/        # Thread listing and linking
-      work-items/     # Work item CRUD
-    domains/          # Domains page
-    login/            # Login page
-    settings/         # Settings page
-    sync-log/         # Sync activity log page
-    work-items/       # Work items page
+      accounts/         # Account management (Gmail OAuth + IMAP setup)
+      activity-log/     # Audit log endpoints
+      auth/             # Google OAuth callback
+      domains/          # Domain CRUD + Kanban column config
+      threads/          # Thread listing, linking, reply
+      todoist/          # Todoist project/section lookup
+      work-items/       # Work item CRUD + Todoist export
+    domains/            # Domain detail page (list + Kanban views)
+    login/              # Login page
+    settings/           # Settings page
+    sync-log/           # Sync activity log page
+    work-items/         # Work item detail page
+  components/
+    domains/            # DomainThreadsClient, DomainViewToggle, KanbanConfigDialog
+    inbox/              # InboxPane, ThreadCard, ThreadList, InboxFilters
+    layout/             # AppShell, DomainSidebar
+    shared/             # StatusBadge, DomainBadge
+    work-items/         # WorkItemCard, WorkItemDetail, KanbanBoard, KanbanColumn, KanbanCard
+    ui/                 # shadcn/ui primitives
   lib/
-    auth.ts           # Session/password auth
-    db.ts             # Prisma client singleton
-    encrypt.ts        # Token encryption (AES-256)
-    utils.ts          # Shared utilities
+    auth.ts             # Session/password auth
+    db.ts               # Prisma client singleton
+    encrypt.ts          # Token encryption (AES-256-GCM)
+    todoist.ts          # Todoist API client
+    utils.ts            # Shared utilities
     gmail/
-      client.ts       # Gmail API client
-      oauth.ts        # OAuth flow helpers
-      sync.ts         # Thread sync logic
+      client.ts         # Gmail API client (OAuth + auto-refresh)
+      oauth.ts          # OAuth flow helpers
+      sync.ts           # Thread sync logic (initial + incremental)
+      actions.ts        # Archive, trash, mark read, send reply
+    imap/
+      sync.ts           # IMAP thread sync
+      actions.ts        # IMAP archive, trash, mark read, send reply
 worker/
-  index.ts            # Background sync worker (cron)
+  index.ts              # Background sync worker (cron)
 prisma/
-  schema.prisma       # Database schema
-  seed.ts             # Domain seed data
-docs/                 # Phase 0 design documents
+  schema.prisma         # Database schema
+  seed.ts               # Domain seed data
+docs/                   # Phase 0 design documents
 ```
 
 ---
 
 ## Environment Variables
 
-| Variable | Description |
-|---|---|
-| `DATABASE_URL` | PostgreSQL connection string |
-| `GOOGLE_CLIENT_ID` | Google OAuth client ID |
-| `GOOGLE_CLIENT_SECRET` | Google OAuth client secret |
-| `GOOGLE_REDIRECT_URI` | OAuth callback URL (must match Google Console) |
-| `ENCRYPTION_KEY` | 32-byte hex key for token encryption (openssl rand -hex 32) |
-| `APP_SECRET` | Password to access the app |
-| `APP_URL` | Base URL of the app (used in OAuth redirects) |
+| Variable | Required | Description |
+|---|---|---|
+| `DATABASE_URL` | Yes | PostgreSQL connection string |
+| `GOOGLE_CLIENT_ID` | Gmail only | Google OAuth client ID |
+| `GOOGLE_CLIENT_SECRET` | Gmail only | Google OAuth client secret |
+| `GOOGLE_REDIRECT_URI` | Gmail only | OAuth callback URL (must match Google Console) |
+| `ENCRYPTION_KEY` | Yes | 32-byte hex key for token encryption (`openssl rand -hex 32`) |
+| `APP_SECRET` | Yes | Password to access the app |
+| `APP_URL` | Yes | Base URL of the app (used in OAuth redirects) |
+| `TODOIST_API_KEY` | Optional | Todoist API token (enables Todoist export) |
+| `TODOIST_PROJECT_ID` | Optional | Default Todoist project for exported tasks |
 
 ---
 
@@ -160,12 +205,13 @@ docs/                 # Phase 0 design documents
 | Phase | Goal | Status |
 |---|---|---|
 | 0 | Definition and design | **Complete** |
-| 1 | MVP: OAuth, sync, unified inbox, domains, work items | **Complete** |
-| 2 | Daily usability: saved views, notes, search, activity log | Pending |
-| 3 | Todoist integration | Pending |
-| 4 | Rules engine and auto-suggestions | Pending |
-| 5 | Local AI (Ollama) assistance | Pending |
-| 6 | Mature console: OpenProject, calendar, mobile | Pending |
+| 1 | MVP: OAuth, Gmail sync, unified inbox, domains, work items | **Complete** |
+| 2 | Daily usability: notes, search, activity log, IMAP support | **Complete** |
+| 3 | Todoist integration with bidirectional sync | **Complete** |
+| 4 | Kanban board view with configurable columns per domain | **Complete** |
+| 5 | Rules engine and auto-suggestions | Pending |
+| 6 | Local AI assistance | Pending |
+| 7 | Additional integrations (Zoho Projects, OpenProject, calendar) | Pending |
 
 ---
 
@@ -174,9 +220,9 @@ docs/                 # Phase 0 design documents
 | Document | Description |
 |---|---|
 | [Product Spec](docs/product-spec.md) | Problem, outcome, principles, non-goals |
-| [Data Model](docs/data-model.md) | 7 entity definitions + draft Prisma schema |
+| [Data Model](docs/data-model.md) | Entity definitions + Prisma schema |
 | [Status Model](docs/status-model.md) | Work item lifecycle, transitions, colors |
 | [Gmail Metadata](docs/gmail-metadata.md) | What is mirrored vs. read-only; sync strategy |
 | [Work Item Rules](docs/work-item-rules.md) | When email becomes a work item; domain assignment |
-| [Wireframes](docs/wireframes.md) | ASCII wireframes for 5 key screens |
-| [Edge Cases](docs/edge-cases.md) | 12 edge cases with resolution |
+| [Wireframes](docs/wireframes.md) | ASCII wireframes for key screens |
+| [Edge Cases](docs/edge-cases.md) | Edge cases with resolution |
