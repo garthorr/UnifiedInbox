@@ -158,6 +158,30 @@ export function InboxPane({ threads, labelMap = {}, todoistEnabled = false }: In
   const anyChecked = checkedIds.size > 0;
   const allSelected = checkedIds.size === threadsWithOverrides.length && threadsWithOverrides.length > 0;
 
+  // Keyboard navigation
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const tag = (e.target as HTMLElement).tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || (e.target as HTMLElement).isContentEditable) return;
+
+      if (e.key === "j" || e.key === "ArrowDown") {
+        e.preventDefault();
+        const idx = threadsWithOverrides.findIndex((t) => t.id === selectedThreadId);
+        const next = threadsWithOverrides[idx + 1];
+        if (next) setSelectedThreadId(next.id);
+      } else if (e.key === "k" || e.key === "ArrowUp") {
+        e.preventDefault();
+        const idx = threadsWithOverrides.findIndex((t) => t.id === selectedThreadId);
+        const prev = threadsWithOverrides[idx - 1] ?? threadsWithOverrides[0];
+        if (prev) setSelectedThreadId(prev.id);
+      } else if (e.key === "Escape") {
+        setSelectedThreadId(null);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selectedThreadId, threadsWithOverrides]);
+
   return (
     <div className="flex flex-1 overflow-hidden h-full">
       <div
@@ -198,7 +222,9 @@ export function InboxPane({ threads, labelMap = {}, todoistEnabled = false }: In
             threadId={selectedThread.id}
             gmailThreadId={selectedThread.gmailThreadId}
             subject={selectedThread.subject}
+            snippet={selectedThread.snippet ?? ""}
             isUnread={unreadOverrides[selectedThread.id] ?? selectedThread.isUnread}
+            todoistEnabled={todoistEnabled}
             onStale={() => handleStale(selectedThread.id)}
             onUnreadChange={(v) =>
               setUnreadOverrides((prev) => ({ ...prev, [selectedThread.id]: v }))

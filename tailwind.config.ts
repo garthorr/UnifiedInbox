@@ -9,12 +9,25 @@ const config: Config = {
   ],
   theme: {
     extend: {
-      borderRadius: {
-        lg: "var(--radius)",
-        md: "calc(var(--radius) - 2px)",
-        sm: "calc(var(--radius) - 4px)",
+      fontFamily: {
+        serif: ["Zilla Slab", "Roboto Slab", "Georgia", "serif"],
+        mono: ["JetBrains Mono", "ui-monospace", "Consolas", "monospace"],
       },
       colors: {
+        "ds-bg":         "var(--ds-bg)",
+        "ds-panel":      "var(--ds-panel)",
+        "ds-panel-2":    "var(--ds-panel-2)",
+        "ds-ink":        "var(--ds-ink)",
+        "ds-ink-2":      "var(--ds-ink-2)",
+        "ds-muted":      "var(--ds-muted)",
+        "ds-line":       "var(--ds-line)",
+        "ds-line-2":     "var(--ds-line-2)",
+        "ds-accent":     "var(--ds-accent)",
+        "ds-accent-bg":  "var(--ds-accent-bg)",
+        "ds-accent-ink": "var(--ds-accent-ink)",
+        "ds-hot":        "var(--ds-hot)",
+        "ds-selected":   "var(--ds-selected)",
+        "ds-kbd-bg":     "var(--ds-kbd-bg)",
         background: "hsl(var(--background))",
         foreground: "hsl(var(--foreground))",
         card: {
@@ -48,6 +61,11 @@ const config: Config = {
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",
+      },
+      borderRadius: {
+        lg: "var(--radius)",
+        md: "calc(var(--radius) - 2px)",
+        sm: "calc(var(--radius) - 4px)",
       },
       keyframes: {
         "accordion-down": {

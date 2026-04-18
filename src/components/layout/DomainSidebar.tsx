@@ -27,109 +27,143 @@ export function DomainSidebar({ domains, counts, todayCount }: DomainSidebarProp
   const pathname = usePathname();
   const totalActive = counts.active + counts.waiting + counts.delegated;
 
+  function navCls(active: boolean) {
+    return cn(
+      "flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[13.5px] font-medium cursor-pointer transition-colors",
+      active
+        ? "bg-ds-ink text-ds-panel"
+        : "text-ds-ink-2 hover:bg-black/5"
+    );
+  }
+
+  function countCls(active: boolean) {
+    return cn(
+      "ml-auto font-mono text-[11px] px-1.5 py-0.5 rounded-full",
+      active
+        ? "bg-ds-panel text-ds-ink"
+        : "bg-black/8 text-ds-muted"
+    );
+  }
+
   return (
-    <aside className="flex h-full w-56 flex-col border-r bg-slate-50">
-      {/* App header */}
-      <div className="flex items-center gap-2 border-b px-4 py-3">
-        <Inbox className="h-5 w-5 text-slate-600" />
-        <span className="text-sm font-semibold text-slate-800">Work Console</span>
+    <aside
+      className="flex h-full w-56 flex-col border-r"
+      style={{ background: "var(--ds-panel-2)", borderColor: "var(--ds-line)" }}
+    >
+      {/* Brand */}
+      <div
+        className="flex items-center gap-2.5 px-4 py-[18px] border-b"
+        style={{ borderColor: "var(--ds-line)" }}
+      >
+        {/* Brand mark: dark square with hot corner accent */}
+        <div className="relative flex-shrink-0 w-7 h-7 rounded-[4px] bg-ds-ink grid place-items-center">
+          <span className="font-sans font-extrabold text-base leading-none text-ds-panel">U</span>
+          <span
+            className="absolute -right-[3px] -bottom-[3px] w-2.5 h-2.5 rounded-[2px] bg-ds-hot border-[2px]"
+            style={{ borderColor: "var(--ds-panel-2)" }}
+          />
+        </div>
+        <span className="font-serif font-bold text-[17px] tracking-tight text-ds-ink">
+          Unified Inbox
+        </span>
+        <div className="ml-auto flex items-center gap-1">
+          <span className="w-1.5 h-1.5 rounded-full bg-ds-accent" />
+        </div>
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 overflow-y-auto px-2 py-2">
-        {/* Today */}
-        <Link
-          href="/today"
-          className={cn(
-            "flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors",
-            pathname === "/today"
-              ? "bg-slate-200 font-medium text-slate-900"
-              : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-          )}
-        >
-          <Sunrise className="h-4 w-4 flex-shrink-0" />
+      <nav className="flex-1 overflow-y-auto px-2 py-3 space-y-0.5">
+        <p className="px-2.5 py-1 font-mono text-[10px] uppercase tracking-widest text-ds-muted">
+          Views
+        </p>
+
+        <Link href="/today" className={navCls(pathname === "/today")}>
+          <Sunrise className="h-[14px] w-[14px] flex-shrink-0 opacity-75" />
           <span className="flex-1">Today</span>
           {todayCount > 0 && (
-            <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-700">
+            <span className={cn(countCls(pathname === "/today"), "bg-ds-hot/15 text-ds-hot")}>
               {todayCount}
             </span>
           )}
         </Link>
 
-        {/* All / Unified Intake */}
-        <Link
-          href="/"
-          className={cn(
-            "flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors",
-            pathname === "/"
-              ? "bg-slate-200 font-medium text-slate-900"
-              : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-          )}
-        >
+        <Link href="/" className={navCls(pathname === "/")}>
+          <Inbox className="h-[14px] w-[14px] flex-shrink-0 opacity-75" />
           <span className="flex-1">All Mail</span>
           {totalActive > 0 && (
-            <span className="rounded-full bg-blue-100 px-1.5 py-0.5 text-xs font-medium text-blue-700">
+            <span className={countCls(pathname === "/")}>
               {totalActive}
             </span>
           )}
         </Link>
 
-        <div className="mt-3 mb-1 px-3 text-xs font-semibold uppercase tracking-wider text-slate-400">
-          Domains
-        </div>
+        {domains.length > 0 && (
+          <p className="px-2.5 py-1 mt-3 font-mono text-[10px] uppercase tracking-widest text-ds-muted">
+            Domains
+          </p>
+        )}
 
-        {domains.map((domain) => (
-          <Link
-            key={domain.id}
-            href={`/domains/${domain.id}`}
-            className={cn(
-              "flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors",
-              pathname === `/domains/${domain.id}`
-                ? "bg-slate-200 font-medium text-slate-900"
-                : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-            )}
-          >
-            <span
-              className="h-2.5 w-2.5 flex-shrink-0 rounded-full"
-              style={{ backgroundColor: domain.color }}
-            />
-            <span className="flex-1 truncate">{domain.name}</span>
-          </Link>
-        ))}
+        {domains.map((domain) => {
+          const active = pathname === `/domains/${domain.id}`;
+          return (
+            <Link key={domain.id} href={`/domains/${domain.id}`} className={navCls(active)}>
+              <span
+                className="h-2 w-2 flex-shrink-0 rounded-full"
+                style={{ background: domain.color }}
+              />
+              <span className="flex-1 truncate">{domain.name}</span>
+            </Link>
+          );
+        })}
       </nav>
 
-      {/* Summary counts */}
-      <div className="border-t px-4 py-2 text-xs text-slate-500">
-        <div className="flex justify-between">
-          <span>Active</span>
-          <span className="font-medium text-blue-600">{counts.active}</span>
+      {/* Stats footer */}
+      <div
+        className="border-t p-3 space-y-1"
+        style={{ borderColor: "var(--ds-line)" }}
+      >
+        <div
+          className="rounded-md p-3 border"
+          style={{ background: "var(--ds-panel)", borderColor: "var(--ds-line)" }}
+        >
+          <p
+            className="font-sans font-bold text-[26px] leading-none tracking-tight tabular-nums"
+            style={{ color: "var(--ds-ink)" }}
+          >
+            {counts.active + counts.waiting + counts.delegated}
+          </p>
+          <p className="font-mono text-[10.5px] uppercase tracking-widest mt-1" style={{ color: "var(--ds-muted)" }}>
+            Active work items
+          </p>
+          <div className="h-1 rounded-full mt-2 overflow-hidden" style={{ background: "var(--ds-line)" }}>
+            <div
+              className="h-full rounded-full"
+              style={{
+                background: "var(--ds-accent)",
+                width: counts.active > 0 ? `${Math.min(100, (counts.active / Math.max(1, counts.active + counts.waiting + counts.delegated)) * 100)}%` : "0%",
+              }}
+            />
+          </div>
         </div>
-        <div className="flex justify-between">
-          <span>Waiting</span>
-          <span className="font-medium text-amber-600">{counts.waiting}</span>
-        </div>
-        <div className="flex justify-between">
-          <span>Delegated</span>
-          <span className="font-medium text-purple-600">{counts.delegated}</span>
-        </div>
-      </div>
 
-      {/* Bottom actions */}
-      <div className="flex items-center border-t px-2 py-2 gap-1">
-        <Link
-          href="/settings"
-          className="flex flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-xs text-slate-500 hover:bg-slate-100"
-        >
-          <Settings className="h-3.5 w-3.5" />
-          Settings
-        </Link>
-        <Link
-          href="/sync-log"
-          className="flex items-center rounded-md p-1.5 text-slate-400 hover:bg-slate-100"
-          title="Sync log"
-        >
-          <RefreshCw className="h-3.5 w-3.5" />
-        </Link>
+        <div className="flex items-center gap-1 pt-1">
+          <Link
+            href="/settings"
+            className="flex flex-1 items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium transition-colors hover:bg-black/5"
+            style={{ color: "var(--ds-muted)" }}
+          >
+            <Settings className="h-3.5 w-3.5" />
+            Settings
+          </Link>
+          <Link
+            href="/sync-log"
+            className="rounded-md p-1.5 transition-colors hover:bg-black/5"
+            style={{ color: "var(--ds-muted)" }}
+            title="Sync log"
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+          </Link>
+        </div>
       </div>
     </aside>
   );

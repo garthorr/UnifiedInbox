@@ -99,16 +99,24 @@ async function InboxContent({ searchParams }: PageProps) {
     }
   }
 
+  const unreadCount = threads.filter((t) => t.isUnread).length;
+
   return (
-    <div className="flex flex-col h-full overflow-hidden">
-      <div className="flex-shrink-0 border-b bg-white px-6 py-3 flex items-center gap-4">
-        <h1 className="text-base font-semibold text-slate-900 shrink-0">Unified Intake</h1>
-        <InboxFilters accounts={accounts} labels={labels} />
-        <div className="ml-auto flex items-center gap-2">
-          <span className="text-xs text-slate-400">
-            {threads.length} thread{threads.length !== 1 ? "s" : ""}
-          </span>
-          <SyncAllButton />
+    <div className="flex flex-col h-full overflow-hidden" style={{ background: "var(--ds-panel)" }}>
+      <div
+        className="flex-shrink-0 border-b px-5 pt-[14px] pb-[10px] flex flex-col gap-0"
+        style={{ background: "var(--ds-panel)", borderColor: "var(--ds-line)" }}
+      >
+        <div className="flex items-start gap-2">
+          <InboxFilters
+            accounts={accounts}
+            labels={labels}
+            totalCount={threads.length}
+            unreadCount={unreadCount}
+          />
+          <div className="ml-auto pt-1 flex items-center gap-2 flex-shrink-0">
+            <SyncAllButton />
+          </div>
         </div>
       </div>
       {workItemResults.length > 0 && (
