@@ -2,7 +2,7 @@
 
 import { useState, memo } from "react";
 import Link from "next/link";
-import { ExternalLink, Plus, ArrowRight, Paperclip } from "lucide-react";
+import { ExternalLink, Plus, ArrowRight, Paperclip, Archive, Mail, MailOpen } from "lucide-react";
 import { DomainBadge, UnassignedBadge } from "@/components/shared/DomainBadge";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { Button } from "@/components/ui/button";
@@ -30,7 +30,13 @@ interface ThreadCardProps {
   labels?: LabelInfo[];
   todoistEnabled?: boolean;
   isSelected?: boolean;
+  isChecked?: boolean;
+  anyChecked?: boolean;
+  index: number;
   onSelect?: () => void;
+  onToggleCheck?: (id: string, index: number, shiftKey: boolean) => void;
+  onArchive?: (id: string) => void;
+  onMarkReadToggle?: (id: string, currentlyUnread: boolean) => void;
 }
 
 export const ThreadCard = memo(function ThreadCard({
@@ -38,31 +44,53 @@ export const ThreadCard = memo(function ThreadCard({
   labels = [],
   todoistEnabled = false,
   isSelected = false,
+  isChecked = false,
+  anyChecked = false,
+  index,
   onSelect,
+  onToggleCheck,
+  onArchive,
+  onMarkReadToggle,
 }: ThreadCardProps) {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const sender = parseEmailDisplay(
     primarySender(thread.participantAddresses, thread.account.email)
   );
 
+  const showCheckbox = isChecked || anyChecked;
+
   return (
     <>
       <div
-        className={`flex items-start gap-3 border-b pl-3 pr-4 py-3 border-l-[3px] ${
+        className={`group flex items-start gap-3 border-b pl-3 pr-4 py-3 border-l-[3px] ${
           isSelected
             ? "bg-blue-50"
+            : isChecked
+            ? "bg-blue-50/60"
             : thread.isUnread
             ? "bg-white hover:bg-slate-50"
             : "bg-slate-50/50 hover:bg-slate-100/60"
         }`}
-        style={{ borderLeftColor: isSelected ? "#3b82f6" : thread.account.color }}
+        style={{ borderLeftColor: isSelected ? "#3b82f6" : isChecked ? "#93c5fd" : thread.account.color }}
       >
-        {/* Unread indicator */}
-        <div className="mt-1.5 flex-shrink-0">
+        {/* Checkbox / unread dot */}
+        <div className="mt-1.5 flex-shrink-0 w-4 flex items-center justify-center">
+          <input
+            type="checkbox"
+            checked={isChecked}
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleCheck?.(thread.id, index, e.shiftKey);
+            }}
+            onChange={() => {}}
+            className={`h-3.5 w-3.5 rounded border-slate-300 accent-blue-600 cursor-pointer ${
+              showCheckbox ? "block" : "hidden group-hover:block"
+            }`}
+          />
           {thread.isUnread ? (
-            <div className="h-2 w-2 rounded-full bg-blue-500" />
+            <div className={`h-2 w-2 rounded-full bg-blue-500 ${showCheckbox ? "hidden" : "block group-hover:hidden"}`} />
           ) : (
-            <div className="h-2 w-2 rounded-full bg-transparent" />
+            <div className={`h-2 w-2 ${showCheckbox ? "hidden" : "block group-hover:hidden"}`} />
           )}
         </div>
 
@@ -118,7 +146,33 @@ export const ThreadCard = memo(function ThreadCard({
         </div>
 
         {/* Actions */}
-        <div className="flex flex-shrink-0 items-center gap-1">
+        <div className="flex flex-shrink-0 items-center gap-0.5">
+          {/* Hover-only quick actions */}
+          <div className="hidden group-hover:flex items-center gap-0.5">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-slate-400 hover:text-slate-700"
+              title="Archive"
+              onClick={(e) => { e.stopPropagation(); onArchive?.(thread.id); }}
+            >
+              <Archive className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-slate-400 hover:text-slate-700"
+              title={thread.isUnread ? "Mark as read" : "Mark as unread"}
+              onClick={(e) => { e.stopPropagation(); onMarkReadToggle?.(thread.id, thread.isUnread); }}
+            >
+              {thread.isUnread
+                ? <MailOpen className="h-3.5 w-3.5" />
+                : <Mail className="h-3.5 w-3.5" />
+              }
+            </Button>
+          </div>
+
+          {/* WI button */}
           {thread.workItem ? (
             <Link href={`/work-items/${thread.workItem.id}`}>
               <Button variant="ghost" size="sm" className="h-7 text-xs gap-1">
@@ -131,16 +185,18 @@ export const ThreadCard = memo(function ThreadCard({
               variant="outline"
               size="sm"
               className="h-7 text-xs gap-1"
-              onClick={() => setShowCreateModal(true)}
+              onClick={(e) => { e.stopPropagation(); setShowCreateModal(true); }}
             >
               <Plus className="h-3 w-3" />
               WI
             </Button>
           )}
+
           <a
             href={gmailThreadUrl(thread.gmailThreadId)}
             target="_blank"
             rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
           >
             <Button variant="ghost" size="icon" className="h-7 w-7">
               <ExternalLink className="h-3 w-3" />

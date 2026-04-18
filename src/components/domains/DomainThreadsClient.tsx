@@ -32,10 +32,11 @@ export function DomainThreadsClient({ threads, todoistEnabled = false }: DomainT
   return (
     <>
       <div className="rounded-lg border bg-white overflow-hidden">
-        {threads.map((thread) => (
+        {threads.map((thread, index) => (
           <ThreadCard
             key={thread.id}
             thread={thread}
+            index={index}
             todoistEnabled={todoistEnabled}
             isSelected={selectedId === thread.id}
             onSelect={() => setSelectedId((prev) => (prev === thread.id ? null : thread.id))}

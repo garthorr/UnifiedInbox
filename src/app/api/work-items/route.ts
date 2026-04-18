@@ -33,10 +33,11 @@ export async function POST(request: Request) {
   if (!body || typeof body !== "object") {
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
   }
-  const { title, domainId, threadId, summary } = body as {
+  const { title, domainId, threadId, threadIds: rawThreadIds, summary } = body as {
     title: string;
     domainId?: string;
     threadId?: string;
+    threadIds?: string[];
     summary?: string;
   };
 
@@ -60,32 +61,25 @@ export async function POST(request: Request) {
     },
   });
 
-  // Attach the triggering thread if provided
-  if (threadId) {
-    const thread = await prisma.threadMirror.findUnique({
-      where: { id: threadId },
+  // Collect all thread IDs to attach (multi-select or single)
+  const allThreadIds = rawThreadIds?.length ? rawThreadIds : threadId ? [threadId] : [];
+
+  for (const tid of allThreadIds) {
+    const thread = await prisma.threadMirror.findUnique({ where: { id: tid } });
+    if (!thread || thread.workItemId) continue; // skip missing or already-attached
+    await prisma.threadMirror.update({
+      where: { id: tid },
+      data: { workItemId: workItem.id },
     });
-    if (thread) {
-      if (thread.workItemId) {
-        return NextResponse.json(
-          { error: "Thread is already attached to another work item" },
-          { status: 409 }
-        );
-      }
-      await prisma.threadMirror.update({
-        where: { id: threadId },
-        data: { workItemId: workItem.id },
-      });
-      await prisma.activityLog.create({
-        data: {
-          eventType: "THREAD_ATTACHED",
-          workItemId: workItem.id,
-          accountId: thread.accountId,
-          description: `Thread attached: ${thread.subject}`,
-          metadata: { threadId, gmailThreadId: thread.gmailThreadId },
-        },
-      });
-    }
+    await prisma.activityLog.create({
+      data: {
+        eventType: "THREAD_ATTACHED",
+        workItemId: workItem.id,
+        accountId: thread.accountId,
+        description: `Thread attached: ${thread.subject}`,
+        metadata: { threadId: tid, gmailThreadId: thread.gmailThreadId },
+      },
+    });
   }
 
   const created = await prisma.workItem.findUniqueOrThrow({

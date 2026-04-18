@@ -24,7 +24,12 @@ interface ThreadListProps {
   labelMap?: Record<string, Record<string, LabelInfo>>;
   todoistEnabled?: boolean;
   selectedThreadId?: string | null;
+  checkedIds?: Set<string>;
+  anyChecked?: boolean;
   onSelectThread?: (id: string | null) => void;
+  onToggleCheck?: (id: string, index: number, shiftKey: boolean) => void;
+  onArchive?: (id: string) => void;
+  onMarkReadToggle?: (id: string, currentlyUnread: boolean) => void;
 }
 
 export function ThreadList({
@@ -32,7 +37,12 @@ export function ThreadList({
   labelMap = {},
   todoistEnabled = false,
   selectedThreadId,
+  checkedIds,
+  anyChecked = false,
   onSelectThread,
+  onToggleCheck,
+  onArchive,
+  onMarkReadToggle,
 }: ThreadListProps) {
   if (threads.length === 0) {
     return (
@@ -44,18 +54,24 @@ export function ThreadList({
 
   return (
     <div className="divide-y divide-slate-100">
-      {threads.map((thread) => (
+      {threads.map((thread, index) => (
         <ThreadCard
           key={thread.id}
           thread={thread}
+          index={index}
           labels={Object.entries(labelMap[thread.account.id] ?? {})
             .filter(([lid]) => thread.gmailLabelIds.includes(lid))
             .map(([, l]) => l)}
           todoistEnabled={todoistEnabled}
           isSelected={selectedThreadId === thread.id}
+          isChecked={checkedIds?.has(thread.id) ?? false}
+          anyChecked={anyChecked}
           onSelect={() =>
             onSelectThread?.(selectedThreadId === thread.id ? null : thread.id)
           }
+          onToggleCheck={onToggleCheck}
+          onArchive={onArchive}
+          onMarkReadToggle={onMarkReadToggle}
         />
       ))}
     </div>

@@ -33,6 +33,7 @@ interface CreateWorkItemModalProps {
     subject: string;
     domain?: { id: string; name: string; color: string } | null;
   };
+  threads?: { id: string; subject: string }[];
   initialDomainId?: string;
   domains?: Domain[];
   todoistEnabled?: boolean;
@@ -41,13 +42,15 @@ interface CreateWorkItemModalProps {
 
 export function CreateWorkItemModal({
   thread,
+  threads,
   initialDomainId,
   domains: propDomains,
   todoistEnabled = false,
   onClose,
 }: CreateWorkItemModalProps) {
   const router = useRouter();
-  const [title, setTitle] = useState(thread?.subject ?? "");
+  const isMulti = !!threads?.length;
+  const [title, setTitle] = useState(isMulti ? "" : (thread?.subject ?? ""));
   const [domainId, setDomainId] = useState(
     initialDomainId ?? thread?.domain?.id ?? ""
   );
@@ -119,7 +122,9 @@ export function CreateWorkItemModal({
         body: JSON.stringify({
           title: title.trim(),
           domainId: domainId || undefined,
-          threadId: thread?.id,
+          ...(isMulti
+            ? { threadIds: threads!.map((t) => t.id) }
+            : { threadId: thread?.id }),
         }),
       });
       if (!res.ok) {
@@ -302,11 +307,25 @@ export function CreateWorkItemModal({
             </div>
           )}
 
-          {thread && (
+          {isMulti ? (
+            <div className="rounded-md border border-slate-100 bg-slate-50 px-3 py-2 space-y-1">
+              <p className="text-xs font-medium text-slate-600">
+                {threads!.length} thread{threads!.length !== 1 ? "s" : ""} will be attached:
+              </p>
+              <ul className="space-y-0.5">
+                {threads!.slice(0, 5).map((t) => (
+                  <li key={t.id} className="text-xs text-slate-500 truncate">· {t.subject}</li>
+                ))}
+                {threads!.length > 5 && (
+                  <li className="text-xs text-slate-400">· and {threads!.length - 5} more…</li>
+                )}
+              </ul>
+            </div>
+          ) : thread ? (
             <p className="text-xs text-slate-500">
               Thread will be attached: <span className="font-medium">{thread.subject}</span>
             </p>
-          )}
+          ) : null}
           {error && <p className="text-xs text-red-500">{error}</p>}
         </div>
         <DialogFooter>
