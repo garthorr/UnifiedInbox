@@ -10,6 +10,7 @@ export interface KanbanWorkItem {
   id: string;
   title: string;
   status: WorkItemStatus;
+  domainId: string | null;
   dueDate: Date | string | null;
   updatedAt: Date | string;
   _count: { threads: number };

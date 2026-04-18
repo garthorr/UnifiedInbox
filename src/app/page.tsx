@@ -18,27 +18,44 @@ interface PageProps {
     q?: string;
     view?: string;
     label?: string;
+    from?: string;
+    hasAttachment?: string;
+    before?: string;
+    after?: string;
   }>;
 }
 
 async function InboxContent({ searchParams }: PageProps) {
   const params = await searchParams;
-  const q = params.q?.trim() ?? "";
-  const days = q ? 90 : parseInt(params.days ?? "7");
-  const afterDate = new Date();
-  afterDate.setDate(afterDate.getDate() - days);
+  const q              = params.q?.trim() ?? "";
+  const from           = params.from?.trim() ?? "";
+  const hasAttachment  = params.hasAttachment === "true";
+  const before         = params.before;
+  const after          = params.after;
 
-  const threadWhere = {
+  const hasSearch = !!(q || from || hasAttachment || before || after);
+  const days = hasSearch ? 90 : parseInt(params.days ?? "7");
+
+  // Base cutoff date (used when no explicit `after` is specified)
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - days);
+
+  const threadWhere: Prisma.ThreadMirrorWhereInput = {
     isStale: false,
-    lastMessageAt: { gte: afterDate },
+    lastMessageAt: {
+      gte: after ? new Date(after) : cutoff,
+      ...(before ? { lte: new Date(before) } : {}),
+    },
     ...(params.accountId ? { accountId: params.accountId } : {}),
     ...(params.isUnread === "true" ? { isUnread: true } : {}),
     ...(params.label ? { gmailLabelIds: { has: params.label } } : {}),
+    ...(hasAttachment ? { hasAttachments: true } : {}),
+    ...(from ? { participantAddresses: { hasSome: [from] } } : {}),
     ...(q
       ? {
           OR: [
             { subject: { contains: q, mode: Prisma.QueryMode.insensitive } },
-            { snippet: { contains: q, mode: Prisma.QueryMode.insensitive } },
+            { snippet:  { contains: q, mode: Prisma.QueryMode.insensitive } },
             { participantAddresses: { hasSome: [q] } },
           ],
         }

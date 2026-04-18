@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { Inbox, RefreshCw, Settings, Sunrise } from "lucide-react";
+import { Inbox, LayoutDashboard, RefreshCw, Settings, Sunrise } from "lucide-react";
 
 interface Domain {
   id: string;
@@ -95,6 +95,11 @@ export function DomainSidebar({ domains, counts, todayCount }: DomainSidebarProp
               {totalActive}
             </span>
           )}
+        </Link>
+
+        <Link href="/kanban" className={navCls(pathname === "/kanban")}>
+          <LayoutDashboard className="h-[14px] w-[14px] flex-shrink-0 opacity-75" />
+          <span className="flex-1">Kanban</span>
         </Link>
 
         {domains.length > 0 && (
