@@ -2,17 +2,19 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { messageCache } from "@/lib/client-message-cache";
+import {
+  Loader2, ExternalLink, ChevronDown, ChevronUp,
+  ArchiveIcon, Trash2, Mail, MailOpen, Reply, Paperclip,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { ReplyCompose } from "./ReplyCompose";
+import { AiTaskBar } from "./AiTaskBar";
+import { CreateWorkItemModal } from "@/components/work-items/CreateWorkItemModal";
+import { gmailThreadUrl } from "@/lib/utils";
 
 export function invalidateThreadCache(threadId: string) {
   messageCache.delete(threadId);
 }
-import {
-  Loader2, ExternalLink, ChevronDown, ChevronUp,
-  ArchiveIcon, Trash2, Mail, MailOpen, Reply,
-} from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { ReplyCompose } from "./ReplyCompose";
-import { gmailThreadUrl } from "@/lib/utils";
 
 interface Message {
   id: string;
@@ -26,13 +28,16 @@ interface Message {
   html: string | null;
   text: string | null;
   bodyLoaded: boolean;
+  attachments: { id: string; filename: string; mimeType: string; size: number }[];
 }
 
 interface EmailViewerProps {
   threadId: string;
   gmailThreadId: string;
   subject: string;
+  snippet?: string;
   isUnread?: boolean;
+  todoistEnabled?: boolean;
   /** Called after archive/trash so the parent can remove the thread from view */
   onStale?: () => void;
   /** Called when read/unread state changes */
@@ -66,7 +71,9 @@ export function EmailViewer({
   threadId,
   gmailThreadId,
   subject,
+  snippet = "",
   isUnread: initialUnread = false,
+  todoistEnabled = false,
   onStale,
   onUnreadChange,
 }: EmailViewerProps) {
@@ -79,6 +86,7 @@ export function EmailViewer({
   const [acting, setActing] = useState(false);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [loadingBodyIds, setLoadingBodyIds] = useState<Set<string>>(new Set());
+  const [createModalTitle, setCreateModalTitle] = useState<string | null>(null);
 
   useEffect(() => {
     setReplyingTo(null);
@@ -169,96 +177,78 @@ export function EmailViewer({
 
   const lastMsg = messages[messages.length - 1] ?? null;
 
+  const from = messages[0]?.from ?? "";
+
+  function toolBtn(label: string, kbd: string, onClick: () => void, primary = false, disabled = false) {
+    return (
+      <button
+        onClick={onClick}
+        disabled={disabled}
+        className="flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-[12px] font-medium transition-colors disabled:opacity-40"
+        style={primary ? {
+          background: "var(--ds-ink)", borderColor: "var(--ds-ink)", color: "var(--ds-panel)",
+        } : {
+          background: "var(--ds-panel)", borderColor: "var(--ds-line)", color: "var(--ds-ink-2)",
+        }}
+      >
+        {label}
+        <kbd
+          className="font-mono text-[10px] rounded px-1 py-px border"
+          style={primary ? {
+            background: "color-mix(in oklch, var(--ds-panel) 20%, transparent)",
+            borderColor: "transparent",
+            color: "color-mix(in oklch, var(--ds-panel) 70%, transparent)",
+          } : {
+            background: "var(--ds-kbd-bg)", borderColor: "var(--ds-line)", color: "var(--ds-muted)",
+          }}
+        >
+          {kbd}
+        </kbd>
+      </button>
+    );
+  }
+
   return (
-    <div className="flex flex-col h-full bg-slate-50">
-      {/* Header */}
-      <div className="flex-shrink-0 border-b bg-white px-4 py-2.5 flex items-center gap-3">
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-slate-800 truncate">{subject}</p>
-          {!loading && !error && (
-            <p className="text-xs text-slate-400">
-              {messages.length} message{messages.length !== 1 ? "s" : ""}
-            </p>
-          )}
-        </div>
+    <div className="flex flex-col h-full relative" style={{ background: "var(--ds-panel)" }}>
+      {/* Toolbar */}
+      <div
+        className="flex-shrink-0 border-b px-[22px] py-[14px] flex items-center gap-2 flex-wrap"
+        style={{ borderColor: "var(--ds-line)", background: "var(--ds-panel)" }}
+      >
+        {toolBtn("Archive", "E", () => doAction("archive"), false, acting)}
+        {toolBtn("Trash", "Del", () => doAction("trash"), false, acting)}
+        {isUnread
+          ? toolBtn("Mark read", "U", () => doAction("markRead"), false, acting)
+          : toolBtn("Mark unread", "U", () => doAction("markUnread"), false, acting)
+        }
+        {toolBtn("Reply", "R", () => setReplyingTo((p) => p ? null : lastMsg), false, acting || loading || !lastMsg)}
+        <div className="ml-auto" />
+        {toolBtn("+ Turn into task", "T", () => setCreateModalTitle(subject), true)}
         <a
           href={gmailThreadUrl(gmailThreadId)}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex-shrink-0 flex items-center gap-1 text-xs text-slate-500 hover:text-blue-600"
+          className="flex items-center gap-1 text-[12px] opacity-50 hover:opacity-80"
+          style={{ color: "var(--ds-muted)" }}
         >
           <ExternalLink className="h-3 w-3" />
-          Gmail
         </a>
+        {actionError && <span className="text-xs text-red-500">{actionError}</span>}
       </div>
 
-      {/* Action toolbar */}
-      <div className="flex-shrink-0 border-b bg-white px-4 py-1.5 flex items-center gap-1">
-        <Button
-          variant="ghost" size="sm"
-          className="h-7 text-xs gap-1.5 text-slate-600"
-          disabled={acting}
-          onClick={() => doAction("archive")}
-          title="Archive"
+      {/* Body — extra bottom padding so content clears the AiTaskBar */}
+      <div className="flex-1 overflow-y-auto" style={{ paddingBottom: "140px" }}>
+      <div className="p-[28px_36px] space-y-2">
+        {/* Serif subject heading */}
+        <h2
+          className="font-serif font-bold text-[28px] leading-tight tracking-tight mb-3"
+          style={{ color: "var(--ds-ink)" }}
         >
-          <ArchiveIcon className="h-3.5 w-3.5" />
-          Archive
-        </Button>
-        <Button
-          variant="ghost" size="sm"
-          className="h-7 text-xs gap-1.5 text-slate-600"
-          disabled={acting}
-          onClick={() => doAction("trash")}
-          title="Move to trash"
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-          Trash
-        </Button>
-        <div className="w-px h-4 bg-slate-200 mx-0.5" />
-        {isUnread ? (
-          <Button
-            variant="ghost" size="sm"
-            className="h-7 text-xs gap-1.5 text-slate-600"
-            disabled={acting}
-            onClick={() => doAction("markRead")}
-            title="Mark as read"
-          >
-            <MailOpen className="h-3.5 w-3.5" />
-            Mark read
-          </Button>
-        ) : (
-          <Button
-            variant="ghost" size="sm"
-            className="h-7 text-xs gap-1.5 text-slate-600"
-            disabled={acting}
-            onClick={() => doAction("markUnread")}
-            title="Mark as unread"
-          >
-            <Mail className="h-3.5 w-3.5" />
-            Mark unread
-          </Button>
-        )}
-        <div className="w-px h-4 bg-slate-200 mx-0.5" />
-        <Button
-          variant="ghost" size="sm"
-          className="h-7 text-xs gap-1.5 text-slate-600"
-          disabled={acting || loading || !lastMsg}
-          onClick={() => setReplyingTo((prev) => (prev ? null : lastMsg))}
-          title="Reply to latest message"
-        >
-          <Reply className="h-3.5 w-3.5" />
-          Reply
-        </Button>
-        {actionError && (
-          <span className="ml-2 text-xs text-red-500">{actionError}</span>
-        )}
-      </div>
-
-      {/* Body */}
-      <div className="flex-1 overflow-y-auto p-3 space-y-2">
+          {subject}
+        </h2>
         {loading && (
           <div className="flex items-center justify-center py-16">
-            <Loader2 className="h-5 w-5 animate-spin text-slate-300" />
+            <Loader2 className="h-5 w-5 animate-spin" style={{ color: "var(--ds-line)" }} />
           </div>
         )}
         {error && (
@@ -274,7 +264,8 @@ export function EmailViewer({
             return (
               <div
                 key={msg.id}
-                className={`rounded-lg border bg-white shadow-sm ${isLast ? "" : "opacity-80"}`}
+                className={`rounded-lg border shadow-sm ${isLast ? "" : "opacity-80"}`}
+                style={{ background: "var(--ds-panel)", borderColor: "var(--ds-line)" }}
               >
                 <button
                   className="w-full px-4 py-3 flex items-start gap-3 text-left hover:bg-slate-50 rounded-t-lg"
@@ -313,6 +304,29 @@ export function EmailViewer({
                         <p className="text-sm text-slate-400">{msg.snippet}</p>
                       )}
                     </div>
+                    {/* Attachments */}
+                    {msg.attachments?.length > 0 && (
+                      <div className="px-4 pb-2 flex flex-wrap gap-1.5">
+                        {msg.attachments.map((att) => (
+                          <a
+                            key={att.id}
+                            href={`/api/threads/${threadId}/messages/${msg.id}/attachments/${att.id}`}
+                            download={att.filename}
+                            className="inline-flex items-center gap-1.5 rounded border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs text-slate-600 hover:bg-slate-100 transition-colors"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <Paperclip className="h-3 w-3 text-slate-400" />
+                            <span className="max-w-[160px] truncate">{att.filename}</span>
+                            <span className="text-slate-400">
+                              {att.size > 1024 * 1024
+                                ? `${(att.size / 1024 / 1024).toFixed(1)} MB`
+                                : `${Math.round(att.size / 1024)} KB`}
+                            </span>
+                          </a>
+                        ))}
+                      </div>
+                    )}
+
                     {/* Per-message reply button */}
                     <div className="px-4 pb-2 flex justify-end">
                       <button
@@ -329,6 +343,26 @@ export function EmailViewer({
             );
           })}
       </div>
+      </div> {/* end body scroll container */}
+
+      {/* AI Task Bar — absolute to outer wrapper, docked above bottom edge */}
+      <AiTaskBar
+        threadId={threadId}
+        subject={subject}
+        snippet={snippet}
+        from={from}
+        todoistEnabled={todoistEnabled}
+        onCreateTask={(aiTitle) => setCreateModalTitle(aiTitle)}
+      />
+
+      {/* Create work item modal */}
+      {createModalTitle !== null && (
+        <CreateWorkItemModal
+          thread={{ id: threadId, subject: createModalTitle }}
+          todoistEnabled={todoistEnabled}
+          onClose={() => setCreateModalTitle(null)}
+        />
+      )}
 
       {/* Reply compose */}
       {replyingTo && (
@@ -344,7 +378,6 @@ export function EmailViewer({
           }
           onSent={() => {
             setReplyingTo(null);
-            // Bust cache and reload so the sent reply appears
             messageCache.delete(threadId);
             setLoading(true);
             fetch(`/api/threads/${threadId}/messages`)

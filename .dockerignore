@@ -1,0 +1,11 @@
+# Postgres data volume (root-owned, not needed in build context)
+data/
+
+# Build artifacts
+.next/
+node_modules/
+
+# Dev artifacts
+.env
+.env.local
+*.log

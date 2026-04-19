@@ -33,6 +33,8 @@ export default async function SettingsPage() {
           id: a.id,
           email: a.email,
           displayName: a.displayName,
+          accountType: a.accountType,
+          color: a.color,
           isActive: a.isActive,
           lastSyncAt: a.lastSyncAt?.toISOString() ?? null,
           threadCount: a._count.threads,

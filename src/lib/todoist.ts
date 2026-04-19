@@ -74,9 +74,17 @@ export async function createTask(opts: {
   dueDate?: Date | string | null;
   projectId?: string | null;
   sectionId?: string | null;
+  threadUrls?: string[];
 }): Promise<TodoistTask> {
   const body: Record<string, unknown> = { content: opts.title };
-  if (opts.notes) body.description = opts.notes;
+
+  // Build description: notes + email thread back-links
+  let desc = opts.notes ?? "";
+  if (opts.threadUrls?.length) {
+    const links = opts.threadUrls.map((u) => `📧 ${u}`).join("\n");
+    desc = desc ? `${desc}\n\n${links}` : links;
+  }
+  if (desc) body.description = desc;
   if (opts.dueDate) {
     const d = new Date(opts.dueDate);
     body.due_date = d.toISOString().slice(0, 10); // YYYY-MM-DD

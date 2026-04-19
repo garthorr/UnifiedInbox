@@ -6,6 +6,30 @@ const INITIAL_SYNC_DAYS = 90;
 const INITIAL_SYNC_MAX_THREADS = 500;
 const METADATA_HEADERS = ["Subject", "From", "To", "Cc", "Date"];
 
+// ─── Retry helper ─────────────────────────────────────────────────────────────
+
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+/** Retry a Gmail API call on rate-limit (429) or server errors (5xx).
+ *  Back-off: 1 s → 2 s → 4 s (three attempts total). */
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  attempts = 3,
+  delayMs = 1000
+): Promise<T> {
+  try {
+    return await fn();
+  } catch (err: unknown) {
+    const code = (err as { code?: number }).code;
+    const retryable = code === 429 || (code !== undefined && code >= 500);
+    if (attempts > 1 && retryable) {
+      await sleep(delayMs);
+      return withRetry(fn, attempts - 1, delayMs * 2);
+    }
+    throw err;
+  }
+}
+
 // ─── Parsing helpers ──────────────────────────────────────────────────────────
 
 function extractAddresses(value: string): string[] {
@@ -60,6 +84,38 @@ function getHeader(
   return (
     headers?.find((h) => h.name?.toLowerCase() === name.toLowerCase())
       ?.value ?? ""
+  );
+}
+
+// ─── Label sync ───────────────────────────────────────────────────────────────
+
+async function syncLabels(accountId: string, gmail: gmail_v1.Gmail): Promise<void> {
+  const { data } = await withRetry(() =>
+    gmail.users.labels.list({ userId: "me" })
+  );
+  const labels = data.labels ?? [];
+  await Promise.all(
+    labels.map((label) =>
+      prisma.label.upsert({
+        where: {
+          accountId_gmailLabelId: {
+            accountId,
+            gmailLabelId: label.id!,
+          },
+        },
+        create: {
+          accountId,
+          gmailLabelId: label.id!,
+          name: label.name!,
+          color: label.color?.backgroundColor ?? null,
+          type: label.type === "user" ? "user" : "system",
+        },
+        update: {
+          name: label.name!,
+          color: label.color?.backgroundColor ?? null,
+        },
+      })
+    )
   );
 }
 
@@ -147,12 +203,14 @@ async function fetchThreadMetadata(
   threadId: string
 ): Promise<gmail_v1.Schema$Thread | null> {
   try {
-    const { data } = await gmail.users.threads.get({
-      userId,
-      id: threadId,
-      format: "metadata",
-      metadataHeaders: METADATA_HEADERS,
-    });
+    const { data } = await withRetry(() =>
+      gmail.users.threads.get({
+        userId,
+        id: threadId,
+        format: "metadata",
+        metadataHeaders: METADATA_HEADERS,
+      })
+    );
     return data;
   } catch (err: unknown) {
     if (
@@ -181,6 +239,9 @@ export async function initialSync(accountId: string): Promise<void> {
     },
   });
 
+  // Sync label names/colors so thread cards can display them
+  await syncLabels(accountId, gmail).catch(() => {}); // non-fatal
+
   const afterDate = new Date();
   afterDate.setDate(afterDate.getDate() - INITIAL_SYNC_DAYS);
   const afterStr = `${afterDate.getFullYear()}/${String(afterDate.getMonth() + 1).padStart(2, "0")}/${String(afterDate.getDate()).padStart(2, "0")}`;
@@ -190,12 +251,14 @@ export async function initialSync(accountId: string): Promise<void> {
   let totalFetched = 0;
 
   do {
-    const { data } = await gmail.users.threads.list({
-      userId,
-      q: `after:${afterStr}`,
-      maxResults: Math.min(100, INITIAL_SYNC_MAX_THREADS - totalFetched),
-      pageToken,
-    });
+    const { data } = await withRetry(() =>
+      gmail.users.threads.list({
+        userId,
+        q: `after:${afterStr}`,
+        maxResults: Math.min(100, INITIAL_SYNC_MAX_THREADS - totalFetched),
+        pageToken,
+      })
+    );
 
     const threads = data.threads ?? [];
     threadIds = threadIds.concat(threads.map((t) => t.id!));
@@ -258,18 +321,23 @@ export async function incrementalSync(accountId: string): Promise<void> {
   const gmail = await getGmailClient(accountId);
   const userId = "me";
 
+  // Keep label names fresh on every incremental sync (fast, non-fatal)
+  await syncLabels(accountId, gmail).catch(() => {});
+
   let historyItems: gmail_v1.Schema$History[] = [];
   let pageToken: string | undefined;
   let latestHistoryId: string | undefined;
 
   try {
     do {
-      const { data } = await gmail.users.history.list({
-        userId,
-        startHistoryId: account.historyId,
-        historyTypes: ["messageAdded", "labelAdded", "labelRemoved"],
-        pageToken,
-      });
+      const { data } = await withRetry(() =>
+        gmail.users.history.list({
+          userId,
+          startHistoryId: account.historyId ?? undefined,
+          historyTypes: ["messageAdded", "labelAdded", "labelRemoved"],
+          pageToken,
+        })
+      );
       historyItems = historyItems.concat(data.history ?? []);
       pageToken = data.nextPageToken ?? undefined;
       if (data.historyId) latestHistoryId = data.historyId;

@@ -17,10 +17,11 @@ const STATUS_DOT_COLORS: Record<string, string> = {
 interface KanbanColumnProps {
   config: KanbanColumnConfig;
   items: KanbanWorkItem[];
+  droppableId?: string; // defaults to config.status; use "domainId:status" for swimlanes
 }
 
-export function KanbanColumn({ config, items }: KanbanColumnProps) {
-  const { setNodeRef, isOver } = useDroppable({ id: config.status });
+export function KanbanColumn({ config, items, droppableId }: KanbanColumnProps) {
+  const { setNodeRef, isOver } = useDroppable({ id: droppableId ?? config.status });
 
   return (
     <div className="flex w-64 flex-shrink-0 flex-col">

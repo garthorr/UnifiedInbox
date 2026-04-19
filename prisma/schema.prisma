@@ -63,6 +63,7 @@ model Account {
   isActive        Boolean   @default(true)
   lastSyncAt      DateTime?
   historyId       String?   // Gmail history ID or "uid:<n>" for IMAP
+  color           String    @default("#6366f1") // user-chosen account color
   imapHost        String?
   imapPort        Int?
   smtpHost        String?
@@ -72,6 +73,7 @@ model Account {
 
   threads         ThreadMirror[]
   activityLogs    ActivityLog[]
+  labels          Label[]
 }
 
 model ThreadMirror {
@@ -110,6 +112,20 @@ model ThreadMirror {
   @@index([accountId, isStale, lastMessageAt])
   @@index([domainId, isStale, lastMessageAt])
   @@index([workItemId, isStale])
+}
+
+model Label {
+  id           String  @id @default(uuid())
+  accountId    String
+  gmailLabelId String  // e.g. "Label_123" for user labels, "INBOX" for system
+  name         String
+  color        String? // hex from Gmail label backgroundColor
+  type         String  @default("user") // "system" | "user"
+
+  account      Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([accountId, gmailLabelId])
+  @@index([accountId])
 }
 
 model Domain {

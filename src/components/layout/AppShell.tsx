@@ -2,7 +2,10 @@ import { prisma } from "@/lib/db";
 import { DomainSidebar } from "./DomainSidebar";
 
 async function getSidebarData() {
-  const [domains, counts] = await Promise.all([
+  const sevenDaysAgo = new Date();
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+  const [domains, counts, todayCount] = await Promise.all([
     prisma.domain.findMany({
       where: { isActive: true },
       orderBy: { sortOrder: "asc" },
@@ -13,6 +16,14 @@ async function getSidebarData() {
       where: { status: { in: ["ACTIVE", "WAITING", "DELEGATED"] } },
       _count: true,
     }),
+    prisma.threadMirror.count({
+      where: {
+        isStale: false,
+        isUnread: true,
+        workItemId: null,
+        lastMessageAt: { gte: sevenDaysAgo },
+      },
+    }),
   ]);
 
   const countMap = { active: 0, waiting: 0, delegated: 0 };
@@ -22,16 +33,18 @@ async function getSidebarData() {
     if (c.status === "DELEGATED") countMap.delegated = c._count;
   }
 
-  return { domains, counts: countMap };
+  return { domains, counts: countMap, todayCount };
 }
 
 export async function AppShell({ children }: { children: React.ReactNode }) {
-  const { domains, counts } = await getSidebarData();
+  const { domains, counts, todayCount } = await getSidebarData();
 
   return (
-    <div className="flex h-screen overflow-hidden">
-      <DomainSidebar domains={domains} counts={counts} />
-      <main className="flex-1 overflow-hidden">{children}</main>
+    <div className="flex h-screen items-stretch justify-center">
+      <div className="flex w-full max-w-[1600px] overflow-hidden shadow-sm">
+        <DomainSidebar domains={domains} counts={counts} todayCount={todayCount} />
+        <main className="flex-1 overflow-hidden bg-white">{children}</main>
+      </div>
     </div>
   );
 }

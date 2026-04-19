@@ -17,44 +17,66 @@ interface PageProps {
     days?: string;
     q?: string;
     view?: string;
+    label?: string;
+    from?: string;
+    hasAttachment?: string;
+    before?: string;
+    after?: string;
   }>;
 }
 
 async function InboxContent({ searchParams }: PageProps) {
   const params = await searchParams;
-  const q = params.q?.trim() ?? "";
-  const days = q ? 90 : parseInt(params.days ?? "7");
-  const afterDate = new Date();
-  afterDate.setDate(afterDate.getDate() - days);
+  const q              = params.q?.trim() ?? "";
+  const from           = params.from?.trim() ?? "";
+  const hasAttachment  = params.hasAttachment === "true";
+  const before         = params.before;
+  const after          = params.after;
 
-  const threadWhere = {
+  const hasSearch = !!(q || from || hasAttachment || before || after);
+  const days = hasSearch ? 90 : parseInt(params.days ?? "7");
+
+  // Base cutoff date (used when no explicit `after` is specified)
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - days);
+
+  const threadWhere: Prisma.ThreadMirrorWhereInput = {
     isStale: false,
-    lastMessageAt: { gte: afterDate },
+    lastMessageAt: {
+      gte: after ? new Date(after) : cutoff,
+      ...(before ? { lte: new Date(before) } : {}),
+    },
     ...(params.accountId ? { accountId: params.accountId } : {}),
     ...(params.isUnread === "true" ? { isUnread: true } : {}),
+    ...(params.label ? { gmailLabelIds: { has: params.label } } : {}),
+    ...(hasAttachment ? { hasAttachments: true } : {}),
+    ...(from ? { participantAddresses: { hasSome: [from] } } : {}),
     ...(q
       ? {
           OR: [
             { subject: { contains: q, mode: Prisma.QueryMode.insensitive } },
-            { snippet: { contains: q, mode: Prisma.QueryMode.insensitive } },
+            { snippet:  { contains: q, mode: Prisma.QueryMode.insensitive } },
             { participantAddresses: { hasSome: [q] } },
           ],
         }
       : {}),
   };
 
-  const [accounts, threads, workItemResults] = await Promise.all([
-    prisma.account.findMany({
-      where: { isActive: true },
-      select: { id: true, email: true },
-      orderBy: { createdAt: "asc" },
-    }),
+  const accounts = await prisma.account.findMany({
+    where: { isActive: true },
+    select: { id: true, email: true },
+    orderBy: { createdAt: "asc" },
+  });
+
+  const accountIds = accounts.map((a) => a.id);
+
+  const [threads, workItemResults, labels] = await Promise.all([
     prisma.threadMirror.findMany({
       where: threadWhere,
       orderBy: { lastMessageAt: "desc" },
       take: 100,
       include: {
-        account: { select: { id: true, email: true, displayName: true } },
+        account: { select: { id: true, email: true, displayName: true, color: true } },
         domain: { select: { id: true, name: true, color: true } },
         workItem: { select: { id: true, title: true, status: true } },
       },
@@ -78,18 +100,40 @@ async function InboxContent({ searchParams }: PageProps) {
           },
         })
       : Promise.resolve([]),
+    prisma.label.findMany({
+      where: { accountId: { in: accountIds } },
+      select: { accountId: true, gmailLabelId: true, name: true, color: true, type: true },
+      orderBy: { name: "asc" },
+    }),
   ]);
 
+  // label lookup for chips: accountId → gmailLabelId → {name, color} (user labels only)
+  type LabelInfo = { name: string; color: string | null };
+  const labelMap: Record<string, Record<string, LabelInfo>> = {};
+  for (const l of labels) {
+    if (l.type === "user") {
+      (labelMap[l.accountId] ??= {})[l.gmailLabelId] = { name: l.name, color: l.color };
+    }
+  }
+
+  const unreadCount = threads.filter((t) => t.isUnread).length;
+
   return (
-    <div className="flex flex-col h-full overflow-hidden">
-      <div className="flex-shrink-0 border-b bg-white px-6 py-3 flex items-center gap-4">
-        <h1 className="text-base font-semibold text-slate-900 shrink-0">Unified Intake</h1>
-        <InboxFilters accounts={accounts} />
-        <div className="ml-auto flex items-center gap-2">
-          <span className="text-xs text-slate-400">
-            {threads.length} thread{threads.length !== 1 ? "s" : ""}
-          </span>
-          <SyncAllButton />
+    <div className="flex flex-col h-full overflow-hidden" style={{ background: "var(--ds-panel)" }}>
+      <div
+        className="flex-shrink-0 border-b px-5 pt-[14px] pb-[10px] flex flex-col gap-0"
+        style={{ background: "var(--ds-panel)", borderColor: "var(--ds-line)" }}
+      >
+        <div className="flex items-start gap-2">
+          <InboxFilters
+            accounts={accounts}
+            labels={labels}
+            totalCount={threads.length}
+            unreadCount={unreadCount}
+          />
+          <div className="ml-auto pt-1 flex items-center gap-2 flex-shrink-0">
+            <SyncAllButton />
+          </div>
         </div>
       </div>
       {workItemResults.length > 0 && (
@@ -112,7 +156,7 @@ async function InboxContent({ searchParams }: PageProps) {
           </div>
         </div>
       )}
-      <InboxPane threads={threads} todoistEnabled={todoistConfigured()} />
+      <InboxPane threads={threads} labelMap={labelMap} todoistEnabled={todoistConfigured()} />
     </div>
   );
 }

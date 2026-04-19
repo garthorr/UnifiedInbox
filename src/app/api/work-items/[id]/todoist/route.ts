@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { createTask, isConfigured } from "@/lib/todoist";
+import { gmailThreadUrl } from "@/lib/utils";
 
 export async function POST(
   request: Request,
@@ -21,10 +22,16 @@ export async function POST(
     dueDate?: string;
   };
 
-  const workItem = await prisma.workItem.findUnique({
-    where: { id },
-    include: { taskLinks: { where: { provider: "TODOIST" } } },
-  });
+  const [workItem, attachedThreads] = await Promise.all([
+    prisma.workItem.findUnique({
+      where: { id },
+      include: { taskLinks: { where: { provider: "TODOIST" } } },
+    }),
+    prisma.threadMirror.findMany({
+      where: { workItemId: id },
+      select: { gmailThreadId: true },
+    }),
+  ]);
 
   if (!workItem) {
     return NextResponse.json({ error: "Work item not found" }, { status: 404 });
@@ -39,12 +46,15 @@ export async function POST(
 
   const dueDate = body.dueDate ?? workItem.dueDate;
 
+  const threadUrls = attachedThreads.map((t) => gmailThreadUrl(t.gmailThreadId));
+
   const task = await createTask({
     title: workItem.title,
     notes: workItem.notes,
     dueDate,
     projectId: body.projectId ?? null,
     sectionId: body.sectionId ?? null,
+    threadUrls,
   });
 
   const [taskLink] = await prisma.$transaction([

@@ -96,7 +96,7 @@ docker compose build
 docker compose up
 ```
 
-The web container automatically runs `prisma db push` and seeds the database on first start.
+The web container automatically runs `prisma migrate deploy` and seeds the database on first start.
 Visit `http://<your-host>:3000`.
 
 ### 3. Connect accounts

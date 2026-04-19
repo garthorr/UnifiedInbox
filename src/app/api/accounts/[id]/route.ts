@@ -1,6 +1,26 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 
+export async function PATCH(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+  const body = await request.json().catch(() => ({}));
+  const { color } = body as { color?: string };
+  if (!color || !/^#[0-9a-fA-F]{6}$/.test(color)) {
+    return NextResponse.json({ error: "Invalid color" }, { status: 400 });
+  }
+
+  const account = await prisma.account.update({
+    where: { id },
+    data: { color },
+    select: { id: true, color: true },
+  });
+
+  return NextResponse.json(account);
+}
+
 export async function DELETE(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
