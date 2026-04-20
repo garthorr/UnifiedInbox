@@ -74,6 +74,23 @@ model Account {
   threads         ThreadMirror[]
   activityLogs    ActivityLog[]
   labels          Label[]
+  syncJobs        SyncJob[]
+}
+
+model SyncJob {
+  id          String    @id @default(uuid())
+  accountId   String
+  status      String    @default("pending") // "pending" | "running" | "done" | "failed"
+  claimedAt   DateTime?
+  completedAt DateTime?
+  error       String?   @db.Text
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  account     Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt])
+  @@index([accountId, status])
 }
 
 model ThreadMirror {

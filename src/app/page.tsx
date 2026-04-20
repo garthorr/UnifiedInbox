@@ -3,6 +3,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { Prisma } from "@prisma/client";
 import { isConfigured as todoistConfigured } from "@/lib/todoist";
+import { parsePositiveInt, parseISODateOrNull } from "@/lib/params";
 import { AppShell } from "@/components/layout/AppShell";
 import { InboxFilters } from "@/components/inbox/InboxFilters";
 import { InboxPane } from "@/components/inbox/InboxPane";
@@ -30,21 +31,20 @@ async function InboxContent({ searchParams }: PageProps) {
   const q              = params.q?.trim() ?? "";
   const from           = params.from?.trim() ?? "";
   const hasAttachment  = params.hasAttachment === "true";
-  const before         = params.before;
-  const after          = params.after;
+  const afterDate      = parseISODateOrNull(params.after);
+  const beforeDate     = parseISODateOrNull(params.before);
 
-  const hasSearch = !!(q || from || hasAttachment || before || after);
-  const days = hasSearch ? 90 : parseInt(params.days ?? "7");
+  const hasSearch = !!(q || from || hasAttachment || afterDate || beforeDate);
+  const days = hasSearch ? 90 : parsePositiveInt(params.days, 7, 365);
 
-  // Base cutoff date (used when no explicit `after` is specified)
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - days);
 
   const threadWhere: Prisma.ThreadMirrorWhereInput = {
     isStale: false,
     lastMessageAt: {
-      gte: after ? new Date(after) : cutoff,
-      ...(before ? { lte: new Date(before) } : {}),
+      gte: afterDate ?? cutoff,
+      ...(beforeDate ? { lte: beforeDate } : {}),
     },
     ...(params.accountId ? { accountId: params.accountId } : {}),
     ...(params.isUnread === "true" ? { isUnread: true } : {}),

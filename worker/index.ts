@@ -1,60 +1,35 @@
 import cron from "node-cron";
 import { prisma } from "../src/lib/db";
-import { syncAccount } from "../src/lib/gmail/sync";
+import { syncAccount, pruneThreadImportLogs } from "../src/lib/gmail/sync";
+import { drainQueue, enqueueSyncJob, pruneOldJobs } from "../src/lib/sync-queue";
 import { getTask, isConfigured as todoistConfigured } from "../src/lib/todoist";
 
 const SYNC_INTERVAL = process.env.SYNC_INTERVAL_MINUTES ?? "15";
-const SYNC_CONCURRENCY = 3;
 
-/** Run tasks up to `limit` at a time to avoid exhausting the DB connection pool. */
-async function withConcurrency<T>(
-  items: T[],
-  limit: number,
-  fn: (item: T) => Promise<void>
-): Promise<void> {
-  for (let i = 0; i < items.length; i += limit) {
-    await Promise.all(items.slice(i, i + limit).map(fn));
-  }
-}
-
-async function syncAllAccounts(): Promise<void> {
+async function enqueueAllAccounts(): Promise<void> {
   const accounts = await prisma.account.findMany({
     where: { isActive: true },
     select: { id: true, email: true },
   });
-
   if (accounts.length === 0) return;
-
-  console.log(`[worker] Syncing ${accounts.length} account(s)...`);
-
-  await withConcurrency(accounts, SYNC_CONCURRENCY, async (account) => {
-    try {
-      await syncAccount(account.id);
-      console.log(`[worker] ✓ ${account.email}`);
-    } catch (err) {
-      console.error(`[worker] ✗ ${account.email}:`, err);
-    }
-  });
+  console.log(`[worker] Enqueueing ${accounts.length} account(s) for sync...`);
+  await Promise.all(accounts.map((a) => enqueueSyncJob(a.id)));
 }
 
 async function runInitialSyncs(): Promise<void> {
-  // On startup, trigger initial sync for any accounts that haven't been synced yet
   const unsynced = await prisma.account.findMany({
     where: { isActive: true, lastSyncAt: null },
     select: { id: true, email: true },
   });
+  if (unsynced.length === 0) return;
 
-  if (unsynced.length > 0) {
-    console.log(
-      `[worker] Running initial sync for ${unsynced.length} account(s)...`
-    );
-    for (const account of unsynced) {
-      try {
-        await syncAccount(account.id);
-        console.log(`[worker] ✓ Initial sync complete: ${account.email}`);
-      } catch (err) {
-        console.error(`[worker] ✗ Initial sync failed: ${account.email}`, err);
-      }
+  console.log(`[worker] Running initial sync for ${unsynced.length} account(s)...`);
+  for (const account of unsynced) {
+    try {
+      await syncAccount(account.id);
+      console.log(`[worker] ✓ Initial sync complete: ${account.email}`);
+    } catch (err) {
+      console.error(`[worker] ✗ Initial sync failed: ${account.email}`, err);
     }
   }
 }
@@ -62,7 +37,6 @@ async function runInitialSyncs(): Promise<void> {
 async function syncTodoist(): Promise<void> {
   if (!todoistConfigured()) return;
 
-  // Find work items linked to Todoist that aren't already DONE
   const links = await prisma.taskLink.findMany({
     where: {
       provider: "TODOIST",
@@ -70,7 +44,6 @@ async function syncTodoist(): Promise<void> {
     },
     include: { workItem: { select: { id: true, title: true, status: true } } },
   });
-
   if (links.length === 0) return;
 
   console.log(`[worker] Checking ${links.length} Todoist task(s)...`);
@@ -95,11 +68,7 @@ async function syncTodoist(): Promise<void> {
               eventType: "WORK_ITEM_STATUS_CHANGED",
               workItemId: link.workItemId,
               description: `Marked DONE via Todoist completion`,
-              metadata: {
-                from: link.workItem.status,
-                to: "DONE",
-                todoistTaskId: link.externalId,
-              },
+              metadata: { from: link.workItem.status, to: "DONE", todoistTaskId: link.externalId },
             },
           }),
         ]);
@@ -116,21 +85,36 @@ async function syncTodoist(): Promise<void> {
   }
 }
 
-// Run initial syncs on startup
+// On startup: run initial syncs for any never-synced accounts
 runInitialSyncs().catch(console.error);
 
-// Schedule incremental sync every N minutes
+// Scheduled cron: enqueue all accounts then drain the queue
 const schedule = `*/${SYNC_INTERVAL} * * * *`;
 console.log(`[worker] Scheduling sync every ${SYNC_INTERVAL} minutes`);
 
-cron.schedule(schedule, () => {
-  syncAllAccounts().catch(console.error);
+cron.schedule(schedule, async () => {
+  try {
+    await enqueueAllAccounts();
+    await drainQueue();
+    await pruneOldJobs();
+    await pruneThreadImportLogs();
+  } catch (err) {
+    console.error("[worker] Cron error:", err);
+  }
   syncTodoist().catch(console.error);
+});
+
+// Also drain the queue every 30 seconds to pick up API-triggered jobs quickly
+cron.schedule("*/30 * * * * *", async () => {
+  try {
+    await drainQueue();
+  } catch (err) {
+    console.error("[worker] Queue drain error:", err);
+  }
 });
 
 console.log("[worker] Started. Waiting for scheduled syncs...");
 
-// Keep the process alive
 process.on("SIGTERM", async () => {
   console.log("[worker] Shutting down...");
   await prisma.$disconnect();

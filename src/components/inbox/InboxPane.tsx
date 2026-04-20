@@ -61,22 +61,37 @@ export function InboxPane({ threads, labelMap = {}, todoistEnabled = false }: In
   const visibleThreadsRef = useRef(threadsWithOverrides);
   visibleThreadsRef.current = threadsWithOverrides;
 
-  // Background-prefetch the top 5 threads after the page settles
+  // Keep a ref so keyboard handler can read it without being a dependency
+  const selectedThreadIdRef = useRef(selectedThreadId);
+  selectedThreadIdRef.current = selectedThreadId;
+
+  // Deduplicate in-flight prefetches so rapid list changes don't double-fetch
+  const inFlightPrefetchRef = useRef<Set<string>>(new Set());
+
+  // Background-prefetch the top 5 threads during idle time
   useEffect(() => {
     const top5 = threads.slice(0, 5);
     if (top5.length === 0) return;
     let cancelled = false;
-    const timer = setTimeout(() => {
+
+    const schedule =
+      typeof requestIdleCallback !== "undefined" ? requestIdleCallback : (cb: () => void) => setTimeout(cb, 800);
+    const cancelSchedule =
+      typeof cancelIdleCallback !== "undefined" ? cancelIdleCallback : clearTimeout;
+
+    const handle = schedule(() => {
       top5.forEach(async (t) => {
-        if (cancelled || messageCache.has(t.id)) return;
+        if (cancelled || messageCache.has(t.id) || inFlightPrefetchRef.current.has(t.id)) return;
+        inFlightPrefetchRef.current.add(t.id);
         try {
           const r = await fetch(`/api/threads/${t.id}/messages`);
           if (!r.ok || cancelled) return;
           messageCache.set(t.id, await r.json());
         } catch { /* silently ignore prefetch failures */ }
+        finally { inFlightPrefetchRef.current.delete(t.id); }
       });
-    }, 800);
-    return () => { cancelled = true; clearTimeout(timer); };
+    });
+    return () => { cancelled = true; cancelSchedule(handle as number); };
   }, [threads]);
 
   function handleStale(id: string) {
@@ -137,20 +152,23 @@ export function InboxPane({ threads, labelMap = {}, todoistEnabled = false }: In
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ threadIds: ids, action }),
       });
-      if (!res.ok) return;
+      if (!res.ok && res.status !== 207) return;
+
+      const { failedIds = [] }: { updated: number; failedIds: string[] } = await res.json();
+      const successIds = ids.filter((id) => !failedIds.includes(id));
 
       if (action === "archive" || action === "trash") {
-        setStaleIds((prev) => new Set([...prev, ...ids]));
-        setSelectedThreadId((prev) => (prev && ids.includes(prev) ? null : prev));
+        setStaleIds((prev) => new Set([...prev, ...successIds]));
+        setSelectedThreadId((prev) => (prev && successIds.includes(prev) ? null : prev));
       } else {
         const isUnread = action === "markUnread";
         setUnreadOverrides((prev) => {
           const next = { ...prev };
-          ids.forEach((id) => { next[id] = isUnread; });
+          successIds.forEach((id) => { next[id] = isUnread; });
           return next;
         });
       }
-      setCheckedIds(new Set());
+      setCheckedIds(new Set(failedIds)); // keep failed ones checked so user can retry
     },
     [checkedIds]
   );
@@ -158,21 +176,24 @@ export function InboxPane({ threads, labelMap = {}, todoistEnabled = false }: In
   const anyChecked = checkedIds.size > 0;
   const allSelected = checkedIds.size === threadsWithOverrides.length && threadsWithOverrides.length > 0;
 
-  // Keyboard navigation
+  // Keyboard navigation — reads from refs so the listener is registered once only
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       const tag = (e.target as HTMLElement).tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || (e.target as HTMLElement).isContentEditable) return;
 
+      const threads = visibleThreadsRef.current;
+      const currentId = selectedThreadIdRef.current;
+
       if (e.key === "j" || e.key === "ArrowDown") {
         e.preventDefault();
-        const idx = threadsWithOverrides.findIndex((t) => t.id === selectedThreadId);
-        const next = threadsWithOverrides[idx + 1];
+        const idx = threads.findIndex((t) => t.id === currentId);
+        const next = threads[idx + 1];
         if (next) setSelectedThreadId(next.id);
       } else if (e.key === "k" || e.key === "ArrowUp") {
         e.preventDefault();
-        const idx = threadsWithOverrides.findIndex((t) => t.id === selectedThreadId);
-        const prev = threadsWithOverrides[idx - 1] ?? threadsWithOverrides[0];
+        const idx = threads.findIndex((t) => t.id === currentId);
+        const prev = threads[idx - 1] ?? threads[0];
         if (prev) setSelectedThreadId(prev.id);
       } else if (e.key === "Escape") {
         setSelectedThreadId(null);
@@ -180,7 +201,8 @@ export function InboxPane({ threads, labelMap = {}, todoistEnabled = false }: In
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selectedThreadId, threadsWithOverrides]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="flex flex-1 overflow-hidden h-full">
