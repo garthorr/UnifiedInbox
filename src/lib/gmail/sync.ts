@@ -185,14 +185,17 @@ async function upsertThread(
     },
   });
 
-  await prisma.activityLog.create({
-    data: {
-      eventType: "THREAD_IMPORTED",
-      accountId,
-      description: `Thread synced: ${subject}`,
-      metadata: { gmailThreadId: thread.id },
-    },
-  });
+  // Per-thread import logs are very high-volume; only write them when opted in.
+  if (process.env.SYNC_LOG_THREADS === "true") {
+    await prisma.activityLog.create({
+      data: {
+        eventType: "THREAD_IMPORTED",
+        accountId,
+        description: `Thread synced: ${subject}`,
+        metadata: { gmailThreadId: thread.id },
+      },
+    });
+  }
 }
 
 // ─── Fetch thread with metadata ───────────────────────────────────────────────
@@ -418,6 +421,17 @@ export async function incrementalSync(accountId: string): Promise<void> {
       description: `Incremental sync complete — ${synced} threads updated`,
       metadata: { threadsUpdated: synced },
     },
+  });
+}
+
+// ─── Log pruning ──────────────────────────────────────────────────────────────
+
+/** Delete THREAD_IMPORTED logs older than `days` days to keep activity_log lean. */
+export async function pruneThreadImportLogs(days = 3): Promise<void> {
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - days);
+  await prisma.activityLog.deleteMany({
+    where: { eventType: "THREAD_IMPORTED", createdAt: { lt: cutoff } },
   });
 }
 

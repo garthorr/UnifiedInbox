@@ -14,7 +14,7 @@ export async function PATCH(request: Request) {
   if (!["archive", "trash", "markRead", "markUnread"].includes(action)) {
     return NextResponse.json({ error: "Invalid action" }, { status: 400 });
   }
-  if (!threadIds.length) return NextResponse.json({ updated: 0 });
+  if (!threadIds.length) return NextResponse.json({ updated: 0, failedIds: [] });
 
   const threads = await prisma.threadMirror.findMany({
     where: { id: { in: threadIds } },
@@ -26,25 +26,39 @@ export async function PATCH(request: Request) {
     import("@/lib/imap/actions"),
   ]);
 
-  await Promise.allSettled(
+  // Run provider actions — capture which threads actually succeeded
+  const results = await Promise.allSettled(
     threads.map(async (t) => {
       const actions = t.account.accountType === "IMAP" ? imap : gmail;
-      if (action === "markRead") await actions.markThreadRead(t.accountId, t.gmailThreadId);
+      if (action === "markRead")   await actions.markThreadRead(t.accountId, t.gmailThreadId);
       else if (action === "markUnread") await actions.markThreadUnread(t.accountId, t.gmailThreadId);
       else if (action === "archive") await actions.archiveThread(t.accountId, t.gmailThreadId);
-      else if (action === "trash") await actions.trashThread(t.accountId, t.gmailThreadId);
+      else if (action === "trash")   await actions.trashThread(t.accountId, t.gmailThreadId);
+      return t.id;
     })
   );
 
+  const successIds: string[] = [];
+  const failedIds: string[] = [];
+  results.forEach((r, i) => {
+    if (r.status === "fulfilled") successIds.push(threads[i].id);
+    else failedIds.push(threads[i].id);
+  });
+
+  if (successIds.length === 0) {
+    return NextResponse.json({ updated: 0, failedIds }, { status: 207 });
+  }
+
   const dbData: Record<string, unknown> =
-    action === "markRead" ? { isUnread: false }
+    action === "markRead"   ? { isUnread: false }
     : action === "markUnread" ? { isUnread: true }
     : { isStale: true };
 
   const result = await prisma.threadMirror.updateMany({
-    where: { id: { in: threadIds } },
+    where: { id: { in: successIds } },
     data: dbData,
   });
 
-  return NextResponse.json({ updated: result.count });
+  const status = failedIds.length > 0 ? 207 : 200;
+  return NextResponse.json({ updated: result.count, failedIds }, { status });
 }
