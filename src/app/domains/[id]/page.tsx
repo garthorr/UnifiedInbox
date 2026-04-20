@@ -83,12 +83,12 @@ export default async function DomainPage({ params, searchParams }: PageProps) {
     <AppShell>
       <div className="flex flex-col h-full">
         <div className="border-b bg-white px-6 py-3 flex items-center gap-3">
-          <Link href="/">
-            <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs">
+          <Button asChild variant="ghost" size="sm" className="h-7 gap-1 text-xs">
+            <Link href="/">
               <ArrowLeft className="h-3 w-3" />
               Back
-            </Button>
-          </Link>
+            </Link>
+          </Button>
           <div className="flex items-center gap-2">
             <span
               className="h-3 w-3 rounded-full flex-shrink-0"
@@ -103,12 +103,12 @@ export default async function DomainPage({ params, searchParams }: PageProps) {
             {isKanban && (
               <KanbanConfigDialog domainId={domain.id} columns={kanbanColumns} />
             )}
-            <Link href={`/?domainId=${domain.id}`}>
-              <Button variant="outline" size="sm" className="h-7 gap-1 text-xs">
+            <Button asChild variant="outline" size="sm" className="h-7 gap-1 text-xs">
+              <Link href={`/?domainId=${domain.id}`}>
                 <Plus className="h-3 w-3" />
                 New Work Item
-              </Button>
-            </Link>
+              </Link>
+            </Button>
           </div>
         </div>
 
