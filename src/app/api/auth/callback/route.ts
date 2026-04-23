@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { exchangeCodeForTokens, getUserInfo } from "@/lib/gmail/oauth";
 import { encrypt } from "@/lib/encrypt";
 import { prisma } from "@/lib/db";
+import { enqueueSyncJob } from "@/lib/sync-queue";
 
 const STATE_COOKIE = "oauth_state";
 
@@ -73,6 +74,10 @@ export async function GET(request: Request) {
         description: `Account connected: ${email}`,
       },
     });
+
+    // Kick off an immediate sync so the worker picks it up within 30 seconds
+    // rather than waiting for the next 15-minute cron cycle.
+    await enqueueSyncJob(account.id).catch(() => {});
 
     const response = NextResponse.redirect(
       new URL("/settings?connected=1", appUrl)

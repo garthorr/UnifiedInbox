@@ -1,16 +1,18 @@
 "use client";
 
 import { useState } from "react";
-import { Send, X } from "lucide-react";
+import { Send, X, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 
 interface ReplyComposeProps {
   threadId: string;
   subject: string;
-  to: string;            // pre-filled recipient (original sender)
+  to: string;
   inReplyTo?: string | null;
   references?: string | null;
+  /** Message bodies to feed the AI draft (from EmailViewer state) */
+  messages?: { from: string; text: string | null; snippet: string | null }[];
   onSent: () => void;
   onCancel: () => void;
 }
@@ -21,12 +23,36 @@ export function ReplyCompose({
   to,
   inReplyTo,
   references,
+  messages = [],
   onSent,
   onCancel,
 }: ReplyComposeProps) {
   const [body, setBody] = useState("");
   const [sending, setSending] = useState(false);
+  const [drafting, setDrafting] = useState(false);
   const [error, setError] = useState("");
+
+  async function draftWithAi() {
+    setDrafting(true);
+    setError("");
+    try {
+      const res = await fetch("/api/ai/draft-reply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          subject,
+          messages: messages.map((m) => ({ from: m.from, text: m.text ?? m.snippet ?? "" })),
+        }),
+      });
+      const data = await res.json() as { draft?: string; error?: string };
+      if (data.draft) setBody(data.draft);
+      else setError(data.error ?? "Could not generate draft");
+    } catch {
+      setError("Could not reach Ollama");
+    } finally {
+      setDrafting(false);
+    }
+  }
 
   async function send() {
     if (!body.trim()) return;
@@ -93,15 +119,29 @@ export function ReplyCompose({
         ) : (
           <p className="text-xs text-slate-400">⌘↩ to send</p>
         )}
-        <Button
-          size="sm"
-          className="h-7 text-xs gap-1.5"
-          disabled={!body.trim() || sending}
-          onClick={send}
-        >
-          <Send className="h-3 w-3" />
-          {sending ? "Sending…" : "Send"}
-        </Button>
+        <div className="flex items-center gap-2">
+          {messages.length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 text-xs gap-1.5"
+              disabled={drafting || sending}
+              onClick={draftWithAi}
+            >
+              <Sparkles className="h-3 w-3" />
+              {drafting ? "Drafting…" : "Draft with AI"}
+            </Button>
+          )}
+          <Button
+            size="sm"
+            className="h-7 text-xs gap-1.5"
+            disabled={!body.trim() || sending}
+            onClick={send}
+          >
+            <Send className="h-3 w-3" />
+            {sending ? "Sending…" : "Send"}
+          </Button>
+        </div>
       </div>
     </div>
   );

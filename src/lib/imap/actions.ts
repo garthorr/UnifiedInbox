@@ -1,120 +1,101 @@
-import { createImapClient } from "./sync";
+import { withImap } from "./pool";
 import { prisma } from "@/lib/db";
 import { decrypt } from "@/lib/encrypt";
 import nodemailer from "nodemailer";
+import type { ImapFlow } from "imapflow";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-async function getAccount(accountId: string) {
-  return prisma.account.findUniqueOrThrow({ where: { id: accountId } });
-}
-
-/** Search for all UIDs belonging to a thread (by root Message-ID). */
+/** Search for all UIDs belonging to a thread (by root Message-ID).
+ *  Runs both searches in parallel — they're independent IMAP commands. */
 async function getThreadUids(
-  client: import("imapflow").ImapFlow,
+  client: ImapFlow,
   rootMessageId: string
 ): Promise<number[]> {
   const bareId = rootMessageId.replace(/[<>]/g, "");
-  const rootUids = (await client.search(
-    { header: { "message-id": `<${bareId}>` } },
-    { uid: true }
-  )) as number[];
-  const replyUids = (await client.search(
-    { header: { "in-reply-to": `<${bareId}>` } },
-    { uid: true }
-  )) as number[];
+  const [rootUids, replyUids] = await Promise.all([
+    client.search({ header: { "message-id": `<${bareId}>` } }, { uid: true }) as Promise<number[]>,
+    client.search({ header: { "in-reply-to": `<${bareId}>` } }, { uid: true }) as Promise<number[]>,
+  ]);
   return [...new Set([...rootUids, ...replyUids])];
+}
+
+type MailboxPaths = { archive?: string; trash?: string };
+
+/** Discover and cache the archive/trash special-use mailbox paths. */
+async function resolveMailbox(
+  client: ImapFlow,
+  paths: MailboxPaths,
+  kind: "archive" | "trash"
+): Promise<string> {
+  if (paths[kind]) return paths[kind]!;
+
+  const mailboxes = await client.list();
+  const specialUse = kind === "archive" ? "\\Archive" : "\\Trash";
+  const fallbackRe = kind === "archive"
+    ? /^(archive|all mail|\[gmail\]\/all mail)$/i
+    : /^(trash|deleted|bin|\[gmail\]\/trash)$/i;
+  const fallbackName = kind === "archive" ? "Archive" : "Trash";
+
+  const path =
+    mailboxes.find((m) => (m.specialUse ?? "").toLowerCase() === specialUse.toLowerCase())?.path ??
+    mailboxes.find((m) => fallbackRe.test(m.name))?.path ??
+    fallbackName;
+
+  paths[kind] = path; // cache on the pool entry so next call skips list()
+  return path;
 }
 
 // ─── Thread-level actions ────────────────────────────────────────────────────
 
 export async function markThreadRead(accountId: string, threadMessageId: string) {
-  const account = await getAccount(accountId);
-  const client = createImapClient(account as Parameters<typeof createImapClient>[0]);
-  await client.connect();
-  try {
+  await withImap(accountId, async (client) => {
     const lock = await client.getMailboxLock("INBOX");
     try {
       const uids = await getThreadUids(client, threadMessageId);
-      if (uids.length > 0) {
-        await client.messageFlagsAdd(uids, ["\\Seen"], { uid: true });
-      }
+      if (uids.length > 0) await client.messageFlagsAdd(uids, ["\\Seen"], { uid: true });
     } finally {
       lock.release();
     }
-  } finally {
-    await client.logout().catch(() => {});
-  }
+  });
 }
 
 export async function markThreadUnread(accountId: string, threadMessageId: string) {
-  const account = await getAccount(accountId);
-  const client = createImapClient(account as Parameters<typeof createImapClient>[0]);
-  await client.connect();
-  try {
+  await withImap(accountId, async (client) => {
     const lock = await client.getMailboxLock("INBOX");
     try {
       const uids = await getThreadUids(client, threadMessageId);
-      if (uids.length > 0) {
-        await client.messageFlagsRemove(uids, ["\\Seen"], { uid: true });
-      }
+      if (uids.length > 0) await client.messageFlagsRemove(uids, ["\\Seen"], { uid: true });
     } finally {
       lock.release();
     }
-  } finally {
-    await client.logout().catch(() => {});
-  }
+  });
 }
 
 export async function archiveThread(accountId: string, threadMessageId: string) {
-  const account = await getAccount(accountId);
-  const client = createImapClient(account as Parameters<typeof createImapClient>[0]);
-  await client.connect();
-  try {
-    // Find the archive mailbox (try special-use attribute first, then common names)
-    const mailboxes = await client.list();
-    const archiveBox =
-      mailboxes.find((m) => (m.specialUse ?? "").toLowerCase() === "\\archive")?.path ??
-      mailboxes.find((m) => /^(archive|all mail|\[gmail\]\/all mail)$/i.test(m.name))?.path ??
-      "Archive";
-
+  await withImap(accountId, async (client, paths) => {
+    const archiveBox = await resolveMailbox(client, paths, "archive");
     const lock = await client.getMailboxLock("INBOX");
     try {
       const uids = await getThreadUids(client, threadMessageId);
-      if (uids.length > 0) {
-        await client.messageMove(uids, archiveBox, { uid: true });
-      }
+      if (uids.length > 0) await client.messageMove(uids, archiveBox, { uid: true });
     } finally {
       lock.release();
     }
-  } finally {
-    await client.logout().catch(() => {});
-  }
+  });
 }
 
 export async function trashThread(accountId: string, threadMessageId: string) {
-  const account = await getAccount(accountId);
-  const client = createImapClient(account as Parameters<typeof createImapClient>[0]);
-  await client.connect();
-  try {
-    const mailboxes = await client.list();
-    const trashBox =
-      mailboxes.find((m) => (m.specialUse ?? "").toLowerCase() === "\\trash")?.path ??
-      mailboxes.find((m) => /^(trash|deleted|bin|\[gmail\]\/trash)$/i.test(m.name))?.path ??
-      "Trash";
-
+  await withImap(accountId, async (client, paths) => {
+    const trashBox = await resolveMailbox(client, paths, "trash");
     const lock = await client.getMailboxLock("INBOX");
     try {
       const uids = await getThreadUids(client, threadMessageId);
-      if (uids.length > 0) {
-        await client.messageMove(uids, trashBox, { uid: true });
-      }
+      if (uids.length > 0) await client.messageMove(uids, trashBox, { uid: true });
     } finally {
       lock.release();
     }
-  } finally {
-    await client.logout().catch(() => {});
-  }
+  });
 }
 
 // ─── Send reply ──────────────────────────────────────────────────────────────
@@ -129,7 +110,10 @@ export async function sendReply(
     references?: string | null;
   }
 ) {
-  const account = await getAccount(accountId);
+  const account = await prisma.account.findUniqueOrThrow({
+    where: { id: accountId },
+    select: { email: true, displayName: true, smtpHost: true, smtpPort: true, accessToken: true },
+  });
   if (!account.smtpHost) throw new Error("No SMTP host configured for this account.");
 
   const transport = nodemailer.createTransport({

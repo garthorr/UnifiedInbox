@@ -87,8 +87,13 @@ export function EmailViewer({
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [loadingBodyIds, setLoadingBodyIds] = useState<Set<string>>(new Set());
   const [createModalTitle, setCreateModalTitle] = useState<string | null>(null);
+  const [summary, setSummary] = useState<string | null>(null);
+  const [summarizing, setSummarizing] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
+    setSummary(null);
+    setSummarizing(false);
     setReplyingTo(null);
 
     const cached = messageCache.get(threadId) as Message[] | undefined;
@@ -100,12 +105,17 @@ export function EmailViewer({
       return;
     }
 
+    // Cancel any in-flight fetch from a previous thread selection
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     setLoading(true);
     setError("");
     setMessages([]);
     setExpanded(new Set());
 
-    fetch(`/api/threads/${threadId}/messages`)
+    fetch(`/api/threads/${threadId}/messages`, { signal: controller.signal })
       .then((r) => {
         if (!r.ok) throw new Error(`${r.status}`);
         return r.json() as Promise<Message[]>;
@@ -115,8 +125,12 @@ export function EmailViewer({
         setMessages(data);
         if (data.length > 0) setExpanded(new Set([data[data.length - 1].id]));
       })
-      .catch(() => setError("Failed to load messages"))
+      .catch((err) => {
+        if ((err as Error).name !== "AbortError") setError("Failed to load messages");
+      })
       .finally(() => setLoading(false));
+
+    return () => controller.abort();
   }, [threadId]);
 
   const doAction = useCallback(
@@ -176,8 +190,30 @@ export function EmailViewer({
   }
 
   const lastMsg = messages[messages.length - 1] ?? null;
-
   const from = messages[0]?.from ?? "";
+
+  async function handleSummarize() {
+    if (summarizing || messages.length === 0) return;
+    setSummarizing(true);
+    setSummary(null);
+    try {
+      const msgTexts = messages.map((m) => ({
+        from: m.from,
+        text: m.text ?? m.snippet ?? "",
+      }));
+      const res = await fetch("/api/ai/summarize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: msgTexts }),
+      });
+      const data = await res.json() as { summary?: string; error?: string };
+      setSummary(data.summary ?? data.error ?? "Could not summarize.");
+    } catch {
+      setSummary("Could not reach Ollama.");
+    } finally {
+      setSummarizing(false);
+    }
+  }
 
   function toolBtn(label: string, kbd: string, onClick: () => void, primary = false, disabled = false) {
     return (
@@ -222,6 +258,13 @@ export function EmailViewer({
           : toolBtn("Mark unread", "U", () => doAction("markUnread"), false, acting)
         }
         {toolBtn("Reply", "R", () => setReplyingTo((p) => p ? null : lastMsg), false, acting || loading || !lastMsg)}
+        {toolBtn(
+          summarizing ? "Summarizing…" : "Summarize",
+          "S",
+          handleSummarize,
+          false,
+          acting || loading || summarizing || messages.length === 0
+        )}
         <div className="ml-auto" />
         {toolBtn("+ Turn into task", "T", () => setCreateModalTitle(subject), true)}
         <a
@@ -246,6 +289,29 @@ export function EmailViewer({
         >
           {subject}
         </h2>
+        {/* AI Summary banner */}
+        {summary && (
+          <div
+            className="rounded-lg px-4 py-3 mb-3 text-sm leading-relaxed flex items-start gap-3"
+            style={{ background: "color-mix(in oklch, var(--ds-hot) 8%, var(--ds-panel))", border: "1px solid color-mix(in oklch, var(--ds-hot) 20%, transparent)" }}
+          >
+            <span
+              className="w-5 h-5 rounded flex-shrink-0 grid place-items-center text-white text-[10px] font-bold mt-0.5"
+              style={{ background: "var(--ds-hot)" }}
+            >
+              ✦
+            </span>
+            <span style={{ color: "var(--ds-ink-2)" }}>{summary}</span>
+            <button
+              className="ml-auto flex-shrink-0 opacity-40 hover:opacity-70 text-lg leading-none"
+              style={{ color: "var(--ds-ink)" }}
+              onClick={() => setSummary(null)}
+            >
+              ×
+            </button>
+          </div>
+        )}
+
         {loading && (
           <div className="flex items-center justify-center py-16">
             <Loader2 className="h-5 w-5 animate-spin" style={{ color: "var(--ds-line)" }} />
@@ -371,6 +437,7 @@ export function EmailViewer({
           subject={subject}
           to={replyingTo.replyTo ?? replyingTo.from}
           inReplyTo={replyingTo.messageId}
+          messages={messages.map((m) => ({ from: m.from, text: m.text, snippet: m.snippet }))}
           references={
             [replyingTo.references, replyingTo.messageId]
               .filter(Boolean)

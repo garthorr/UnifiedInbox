@@ -27,6 +27,18 @@ async function hashSecret(secret: string): Promise<string> {
     .join("");
 }
 
+// Constant-time string comparison to prevent timing attacks.
+// Both inputs are always 64-char hex digests so length will match,
+// but we still XOR-accumulate over the longer length for safety.
+function timingSafeEqual(a: string, b: string): boolean {
+  const len = Math.max(a.length, b.length);
+  let diff = a.length ^ b.length; // non-zero if lengths differ
+  for (let i = 0; i < len; i++) {
+    diff |= (a.charCodeAt(i) ?? 0) ^ (b.charCodeAt(i) ?? 0);
+  }
+  return diff === 0;
+}
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
@@ -37,10 +49,10 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  const sessionCookie = request.cookies.get(COOKIE_NAME)?.value;
+  const sessionCookie = request.cookies.get(COOKIE_NAME)?.value ?? "";
   const expected = await hashSecret(process.env.APP_SECRET ?? "");
 
-  if (sessionCookie !== expected) {
+  if (!timingSafeEqual(sessionCookie, expected)) {
     // API routes return 401 JSON; page routes redirect to login
     if (pathname.startsWith("/api/")) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

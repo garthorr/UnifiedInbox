@@ -1,5 +1,5 @@
 import { cookies } from "next/headers";
-import { createHash } from "crypto";
+import { createHash, timingSafeEqual } from "crypto";
 
 const COOKIE_NAME = "console_session";
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 30; // 30 days
@@ -19,7 +19,9 @@ export async function isAuthenticated(): Promise<boolean> {
   const value = cookieStore.get(COOKIE_NAME)?.value;
   if (!value) return false;
   const expected = hashSecret(process.env.APP_SECRET ?? "");
-  return value === expected;
+  // Both are fixed-length SHA-256 hex digests; timingSafeEqual prevents
+  // an attacker from brute-forcing the hash one byte at a time via timing.
+  return timingSafeEqual(Buffer.from(value), Buffer.from(expected));
 }
 
 /**
@@ -31,7 +33,7 @@ export function buildSessionCookie(): {
   options: {
     httpOnly: boolean;
     secure: boolean;
-    sameSite: "lax";
+    sameSite: "strict";
     maxAge: number;
     path: string;
   };
@@ -43,7 +45,7 @@ export function buildSessionCookie(): {
     options: {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
+      sameSite: "strict",
       maxAge: COOKIE_MAX_AGE,
       path: "/",
     },

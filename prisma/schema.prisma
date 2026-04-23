@@ -109,6 +109,7 @@ model ThreadMirror {
   historyId             String?
   syncedAt              DateTime  @default(now())
   isStale               Boolean   @default(false)
+  isFlagged             Boolean   @default(false)
   workItemId            String?
   domainId              String?   // suggested/assigned domain (independent of work item)
   createdAt             DateTime  @default(now())

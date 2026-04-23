@@ -284,17 +284,17 @@ export const ThreadCard = memo(function ThreadCard({
                 + TASK
               </button>
             ) : (
-              <Link href={`/work-items/${thread.workItem.id}`} onClick={(e) => e.stopPropagation()}>
-                <button
-                  className="rounded border px-2 py-0.5 text-[11px] font-semibold transition-colors hover:bg-ds-ink hover:text-ds-panel"
-                  style={{
-                    background: "var(--ds-panel)",
-                    borderColor: "var(--ds-line)",
-                    color: "var(--ds-ink-2)",
-                  }}
-                >
-                  WI →
-                </button>
+              <Link
+                href={`/work-items/${thread.workItem.id}`}
+                onClick={(e) => e.stopPropagation()}
+                className="rounded border px-2 py-0.5 text-[11px] font-semibold transition-colors hover:bg-ds-ink hover:text-ds-panel"
+                style={{
+                  background: "var(--ds-panel)",
+                  borderColor: "var(--ds-line)",
+                  color: "var(--ds-ink-2)",
+                }}
+              >
+                WI →
               </Link>
             )}
           </div>

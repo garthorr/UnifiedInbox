@@ -51,12 +51,12 @@ export default async function WorkItemPage({ params }: PageProps) {
     <AppShell>
       <div className="flex flex-col h-full">
         <div className="border-b bg-white px-4 py-2 flex items-center gap-2">
-          <Link href={backHref}>
-            <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs">
+          <Button asChild variant="ghost" size="sm" className="h-7 gap-1 text-xs">
+            <Link href={backHref}>
               <ArrowLeft className="h-3 w-3" />
               {workItem.domain?.name ?? "Inbox"}
-            </Button>
-          </Link>
+            </Link>
+          </Button>
         </div>
         <div className="flex-1 overflow-hidden">
           <WorkItemDetail

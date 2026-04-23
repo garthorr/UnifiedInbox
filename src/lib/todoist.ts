@@ -48,7 +48,7 @@ async function fetchAllPages<T>(url: string, label: string): Promise<T[]> {
       const text = await res.text();
       throw new Error(`Todoist ${label} failed ${res.status}: ${text}`);
     }
-    const data: { results: T[]; next_cursor: string | null; has_more: boolean } = await res.json();
+    const data = await res.json() as { results: T[]; next_cursor: string | null; has_more: boolean };
     all.push(...data.results);
     cursor = data.has_more ? data.next_cursor : null;
   } while (cursor);
@@ -103,7 +103,7 @@ export async function createTask(opts: {
     const text = await res.text();
     throw new Error(`Todoist createTask failed ${res.status}: ${text}`);
   }
-  return res.json();
+  return res.json() as Promise<TodoistTask>;
 }
 
 export async function getTask(taskId: string): Promise<TodoistTask> {
@@ -114,7 +114,7 @@ export async function getTask(taskId: string): Promise<TodoistTask> {
     const text = await res.text();
     throw new Error(`Todoist getTask failed ${res.status}: ${text}`);
   }
-  return res.json();
+  return res.json() as Promise<TodoistTask>;
 }
 
 export async function closeTask(taskId: string): Promise<void> {
@@ -130,4 +130,81 @@ export async function closeTask(taskId: string): Promise<void> {
 
 export function isConfigured(): boolean {
   return !!process.env.TODOIST_API_KEY;
+}
+
+// ─── Sync helper (used by worker + /api/todoist/sync) ─────────────────────────
+
+import { prisma } from "@/lib/db";
+
+export interface TodoistSyncResult {
+  synced: number;
+  completed: number;
+  errors: string[];
+}
+
+/**
+ * Poll Todoist for all linked non-DONE tasks and update local state.
+ * Runs up to `concurrency` tasks in parallel (default 5) to respect
+ * Todoist's rate limit while still being much faster than serial iteration.
+ */
+export async function syncTodoistLinks(concurrency = 5): Promise<TodoistSyncResult> {
+  const links = await prisma.taskLink.findMany({
+    where: {
+      provider: "TODOIST",
+      workItem: { status: { not: "DONE" } },
+    },
+    include: { workItem: { select: { id: true, title: true, status: true } } },
+  });
+
+  if (links.length === 0) return { synced: 0, completed: 0, errors: [] };
+
+  let synced = 0;
+  let completed = 0;
+  const errors: string[] = [];
+
+  // Work-stealing concurrency: `concurrency` workers each pull from the shared queue.
+  const queue = [...links];
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, links.length) }, async () => {
+      while (queue.length > 0) {
+        const link = queue.shift()!;
+        try {
+          const task = await getTask(link.externalId);
+          const now = new Date();
+
+          if (task.is_completed) {
+            await prisma.$transaction([
+              prisma.workItem.update({
+                where: { id: link.workItemId },
+                data: { status: "DONE" },
+              }),
+              prisma.taskLink.update({
+                where: { id: link.id },
+                data: { externalStatus: "completed", externalTitle: task.content, lastSyncAt: now },
+              }),
+              prisma.activityLog.create({
+                data: {
+                  eventType: "WORK_ITEM_STATUS_CHANGED",
+                  workItemId: link.workItemId,
+                  description: `Marked DONE via Todoist completion`,
+                  metadata: { from: link.workItem.status, to: "DONE", todoistTaskId: link.externalId },
+                },
+              }),
+            ]);
+            completed++;
+          } else {
+            await prisma.taskLink.update({
+              where: { id: link.id },
+              data: { externalStatus: "active", externalTitle: task.content, lastSyncAt: now },
+            });
+          }
+          synced++;
+        } catch (err) {
+          errors.push(`TaskLink ${link.id}: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
+    })
+  );
+
+  return { synced, completed, errors };
 }

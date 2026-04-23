@@ -1,6 +1,7 @@
 import type { gmail_v1 } from "googleapis";
 import { getGmailClient } from "./client";
 import { prisma } from "@/lib/db";
+import { applyRulesToThread } from "@/lib/rules";
 
 const INITIAL_SYNC_DAYS = 90;
 const INITIAL_SYNC_MAX_THREADS = 500;
@@ -124,7 +125,7 @@ async function syncLabels(accountId: string, gmail: gmail_v1.Gmail): Promise<voi
 async function upsertThread(
   accountId: string,
   thread: gmail_v1.Schema$Thread
-): Promise<void> {
+): Promise<{ id: string; isNew: boolean }> {
   const messages = thread.messages ?? [];
   if (messages.length === 0) return;
 
@@ -147,7 +148,12 @@ async function upsertThread(
   const firstMessageAt = new Date(Number(firstMsg.internalDate ?? Date.now()));
   const historyId = thread.historyId ?? "0";
 
-  await prisma.threadMirror.upsert({
+  const existing = await prisma.threadMirror.findUnique({
+    where: { gmailThreadId_accountId: { gmailThreadId: thread.id!, accountId } },
+    select: { id: true },
+  });
+
+  const row = await prisma.threadMirror.upsert({
     where: {
       gmailThreadId_accountId: {
         gmailThreadId: thread.id!,
@@ -183,6 +189,7 @@ async function upsertThread(
       isStale: false,
       syncedAt: new Date(),
     },
+    select: { id: true },
   });
 
   // Per-thread import logs are very high-volume; only write them when opted in.
@@ -196,6 +203,8 @@ async function upsertThread(
       },
     });
   }
+
+  return { id: row.id, isNew: !existing };
 }
 
 // ─── Fetch thread with metadata ───────────────────────────────────────────────
@@ -282,7 +291,8 @@ export async function initialSync(accountId: string): Promise<void> {
     await Promise.all(
       threads.map(async (thread) => {
         if (!thread) return;
-        await upsertThread(accountId, thread);
+        const { id, isNew } = await upsertThread(accountId, thread);
+        if (isNew) applyRulesToThread(id).catch(() => {});
         synced++;
         if (thread.historyId && thread.historyId > maxHistoryId) {
           maxHistoryId = thread.historyId;
@@ -402,7 +412,8 @@ export async function incrementalSync(accountId: string): Promise<void> {
             },
           });
         } else {
-          await upsertThread(accountId, thread);
+          const { id, isNew } = await upsertThread(accountId, thread);
+          if (isNew) applyRulesToThread(id).catch(() => {});
           synced++;
         }
       })
