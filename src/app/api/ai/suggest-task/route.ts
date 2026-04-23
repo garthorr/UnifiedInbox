@@ -1,10 +1,8 @@
 import { NextResponse } from "next/server";
+import { ollamaUrl, ollamaGenerate, parseJsonResponse } from "@/lib/ai";
 
 export async function POST(request: Request) {
-  const ollamaUrl = process.env.OLLAMA_BASE_URL;
-  const model = process.env.OLLAMA_MODEL ?? "llama3.2";
-
-  if (!ollamaUrl) {
+  try { ollamaUrl(); } catch {
     return NextResponse.json({ error: "OLLAMA_BASE_URL not configured" }, { status: 503 });
   }
 
@@ -32,29 +30,8 @@ ${snippet ? `Preview: ${snippet}` : ""}
 Return ONLY valid JSON, no explanation, no markdown.`;
 
   try {
-    const res = await fetch(`${ollamaUrl}/api/generate`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model, prompt, stream: false, format: "json" }),
-      signal: AbortSignal.timeout(15000),
-    });
-
-    if (!res.ok) {
-      return NextResponse.json({ error: `Ollama returned ${res.status}` }, { status: 502 });
-    }
-
-    const data = await res.json();
-    const raw = data.response ?? "";
-
-    let parsed: { title?: string; due_date?: string | null; description?: string } = {};
-    try {
-      parsed = JSON.parse(raw);
-    } catch {
-      // Try to extract JSON from the response if it has extra text
-      const match = raw.match(/\{[\s\S]*\}/);
-      if (match) parsed = JSON.parse(match[0]);
-    }
-
+    const raw = await ollamaGenerate(prompt);
+    const parsed = parseJsonResponse<{ title?: string; due_date?: string | null; description?: string }>(raw);
     return NextResponse.json({
       title: parsed.title ?? subject,
       dueDate: parsed.due_date ?? null,

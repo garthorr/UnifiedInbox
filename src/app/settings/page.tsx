@@ -4,7 +4,7 @@ import { AppShell } from "@/components/layout/AppShell";
 import { SettingsClient } from "./SettingsClient";
 
 export default async function SettingsPage() {
-  const [accounts, todoistTaskCount, domains] = await Promise.all([
+  const [accounts, todoistTaskCount, domains, rules] = await Promise.all([
     prisma.account.findMany({
       orderBy: { createdAt: "asc" },
       include: {
@@ -23,6 +23,10 @@ export default async function SettingsPage() {
     prisma.domain.findMany({
       orderBy: { sortOrder: "asc" },
       include: { _count: { select: { workItems: true } } },
+    }),
+    prisma.rule.findMany({
+      orderBy: { priority: "asc" },
+      include: { domain: { select: { id: true, name: true, color: true } } },
     }),
   ]);
 
@@ -50,6 +54,7 @@ export default async function SettingsPage() {
           sortOrder: d.sortOrder,
           workItemCount: d._count.workItems,
         }))}
+        rules={rules}
       />
     </AppShell>
   );

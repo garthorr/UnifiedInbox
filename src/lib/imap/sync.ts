@@ -1,6 +1,7 @@
 import { ImapFlow } from "imapflow";
 import { prisma } from "@/lib/db";
 import { decrypt } from "@/lib/encrypt";
+import { applyRulesToThread } from "@/lib/rules";
 
 const INITIAL_SYNC_DAYS = 90;
 const INITIAL_SYNC_MAX = 500;
@@ -153,9 +154,13 @@ export async function initialSync(accountId: string): Promise<void> {
     await client.logout().catch(() => {});
   }
 
-  // Persist threads
+  // Persist threads and apply rules to new ones
   for (const [tid, t] of threads) {
-    await prisma.threadMirror.upsert({
+    const existing = await prisma.threadMirror.findUnique({
+      where: { gmailThreadId_accountId: { gmailThreadId: tid, accountId } },
+      select: { id: true },
+    });
+    const row = await prisma.threadMirror.upsert({
       where: { gmailThreadId_accountId: { gmailThreadId: tid, accountId } },
       create: {
         gmailThreadId: tid,
@@ -185,7 +190,9 @@ export async function initialSync(accountId: string): Promise<void> {
         isStale: false,
         syncedAt: new Date(),
       },
+      select: { id: true },
     });
+    if (!existing) applyRulesToThread(row.id).catch(() => {});
   }
 
   await prisma.account.update({
@@ -242,7 +249,11 @@ export async function incrementalSync(accountId: string): Promise<void> {
           ...(msg.envelope?.cc ?? []),
         ].map((a) => formatAddr(a as { name?: string; address?: string })).filter(Boolean);
 
-        await prisma.threadMirror.upsert({
+        const existing = await prisma.threadMirror.findUnique({
+          where: { gmailThreadId_accountId: { gmailThreadId: tid, accountId } },
+          select: { id: true },
+        });
+        const row = await prisma.threadMirror.upsert({
           where: { gmailThreadId_accountId: { gmailThreadId: tid, accountId } },
           create: {
             gmailThreadId: tid,
@@ -260,12 +271,14 @@ export async function incrementalSync(accountId: string): Promise<void> {
           },
           update: {
             messageCount: { increment: 1 },
-            lastMessageAt: date, // incremental UIDs are always newer
+            lastMessageAt: date,
             ...(isUnread && { isUnread: true }),
             historyId: String(uid),
             syncedAt: new Date(),
           },
+          select: { id: true },
         });
+        if (!existing) applyRulesToThread(row.id).catch(() => {});
         synced++;
       }
     } finally {

@@ -23,6 +23,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { relativeTime } from "@/lib/utils";
+import { RulesPanel } from "@/components/settings/RulesPanel";
 
 interface Account {
   id: string;
@@ -51,10 +52,19 @@ interface TodoistStatus {
   taskCount: number;
 }
 
+interface RuleCondition { field: string; operator: string; value: string }
+interface RuleDomain { id: string; name: string; color: string }
+interface Rule {
+  id: string; name: string; isActive: boolean; priority: number;
+  conditions: RuleCondition[]; action: string; domainId: string | null;
+  domain: RuleDomain | null;
+}
+
 interface SettingsClientProps {
   accounts: Account[];
   todoist: TodoistStatus;
   domains: Domain[];
+  rules: Rule[];
 }
 
 const IMAP_DEFAULTS: Record<string, { imap: string; imapPort: number; smtp: string; smtpPort: number }> = {
@@ -64,7 +74,7 @@ const IMAP_DEFAULTS: Record<string, { imap: string; imapPort: number; smtp: stri
   "yahoo.com": { imap: "imap.mail.yahoo.com", imapPort: 993, smtp: "smtp.mail.yahoo.com", smtpPort: 587 },
 };
 
-export function SettingsClient({ accounts: initialAccounts, todoist, domains: initialDomains }: SettingsClientProps) {
+export function SettingsClient({ accounts: initialAccounts, todoist, domains: initialDomains, rules }: SettingsClientProps) {
   const router = useRouter();
   const [accounts, setAccounts] = useState(initialAccounts);
   const [domains, setDomains] = useState(initialDomains);
@@ -533,6 +543,12 @@ export function SettingsClient({ accounts: initialAccounts, todoist, domains: in
           </div>
           {domainError && <p className="mt-1.5 text-xs text-red-500">{domainError}</p>}
         </section>
+
+        {/* Rules */}
+        <RulesPanel
+          initialRules={rules as Parameters<typeof RulesPanel>[0]["initialRules"]}
+          domains={initialDomains.map((d) => ({ id: d.id, name: d.name, color: d.color }))}
+        />
 
         {/* Todoist integration */}
         <section>
