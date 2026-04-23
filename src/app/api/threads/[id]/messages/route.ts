@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getGmailClient } from "@/lib/gmail/client";
-import { createImapClient } from "@/lib/imap/sync";
+import { withImap } from "@/lib/imap/pool";
 import { findBody, findAttachments } from "@/lib/gmail/mime";
 import type { GmailPart, AttachmentMeta } from "@/lib/gmail/mime";
 import { serverCacheGet, serverCacheSet } from "@/lib/server-message-cache";
@@ -22,42 +22,26 @@ type MessageMeta = {
 };
 
 // ─── Gmail handler ────────────────────────────────────────────────────────────
-// Uses format:"metadata" for the thread list (fast, no body data) and fetches
-// the full body only for the last (auto-expanded) message.
+// Single format:"full" call returns all messages with bodies in one round-trip,
+// eliminating the previous sequential metadata → last-message-body waterfall.
 
 async function getGmailMessages(accountId: string, gmailThreadId: string): Promise<MessageMeta[]> {
   const gmail = await getGmailClient(accountId);
 
-  // Step 1: lightweight metadata fetch — no body payloads, just headers + snippets
   const threadRes = await gmail.users.threads.get({
     userId: "me",
     id: gmailThreadId,
-    format: "metadata",
-    metadataHeaders: ["From", "To", "Date", "Message-ID", "Reply-To", "References"],
-  });
-
-  const msgs = threadRes.data.messages ?? [];
-  if (msgs.length === 0) return [];
-
-  // Step 2: full body for the last message only (the one that auto-expands)
-  const lastId = msgs[msgs.length - 1].id!;
-  const fullRes = await gmail.users.messages.get({
-    userId: "me",
-    id: lastId,
     format: "full",
   });
 
-  const lastPayload = fullRes.data.payload as GmailPart | undefined;
-  const lastHtml = lastPayload ? findBody(lastPayload, "text/html") : null;
-  const lastText = lastPayload ? findBody(lastPayload, "text/plain") : null;
-  const lastAttachments = lastPayload ? findAttachments(lastPayload) : [];
+  const msgs = threadRes.data.messages ?? [];
 
-  return msgs.map((msg, i) => {
+  return msgs.map((msg) => {
     const headers = msg.payload?.headers ?? [];
     const h = (name: string) =>
       headers.find((hh) => hh.name?.toLowerCase() === name.toLowerCase())?.value ?? "";
 
-    const isLast = i === msgs.length - 1;
+    const payload = msg.payload as GmailPart | undefined;
     return {
       id: msg.id ?? "",
       messageId: h("message-id") || null,
@@ -67,10 +51,10 @@ async function getGmailMessages(accountId: string, gmailThreadId: string): Promi
       references: h("references") || null,
       date: h("date"),
       snippet: msg.snippet ?? null,
-      html: isLast ? lastHtml : null,
-      text: isLast ? lastText : null,
-      bodyLoaded: isLast,
-      attachments: isLast ? lastAttachments : [],
+      html: payload ? findBody(payload, "text/html") : null,
+      text: payload ? findBody(payload, "text/plain") : null,
+      bodyLoaded: true,
+      attachments: payload ? findAttachments(payload) : [],
     };
   });
 }
@@ -83,20 +67,19 @@ function fmtAddr(a: { name?: string | null; address?: string | null }): string {
 }
 
 // ─── IMAP handler ─────────────────────────────────────────────────────────────
-// Runs both SEARCHes in parallel, fetches envelope (metadata) for all messages,
-// then fetches the source only for the last message.
+// Uses the connection pool (withImap) so TLS connections are reused across
+// requests instead of paying the handshake cost on every thread click.
+// Fetches all message sources in one FETCH command so every message renders
+// without a second lazy-load round-trip.
 
 async function getImapMessages(accountId: string, threadId: string): Promise<MessageMeta[]> {
-  const account = await prisma.account.findUniqueOrThrow({ where: { id: accountId } });
-  const client = createImapClient(account as Parameters<typeof createImapClient>[0]);
-  await client.connect();
+  const { simpleParser } = await import("mailparser");
 
-  try {
+  return withImap(accountId, async (client) => {
     const lock = await client.getMailboxLock("INBOX");
     try {
       const bareId = threadId.replace(/[<>]/g, "");
 
-      // Parallel SEARCH instead of sequential
       const [rootUids, replyUids] = await Promise.all([
         client.search({ header: { "message-id": `<${bareId}>` } }, { uid: true }) as Promise<number[]>,
         client.search({ header: { "in-reply-to": `<${bareId}>` } }, { uid: true }) as Promise<number[]>,
@@ -105,69 +88,37 @@ async function getImapMessages(accountId: string, threadId: string): Promise<Mes
       const allUids = [...new Set([...rootUids, ...replyUids])].sort((a, b) => a - b);
       if (allUids.length === 0) return [];
 
-      // Step 1: envelope (metadata) for all — no body download
-      type EnvMsg = {
-        uid: number;
-        envelope: {
-          date?: Date | null;
-          messageId?: string | null;
-          from?: Array<{ name?: string | null; address?: string | null }> | null;
-          to?: Array<{ name?: string | null; address?: string | null }> | null;
-          replyTo?: Array<{ name?: string | null; address?: string | null }> | null;
-        };
-      };
-      const envMessages: EnvMsg[] = [];
-      for await (const msg of client.fetch(allUids, { uid: true, envelope: true }, { uid: true })) {
-        envMessages.push({ uid: msg.uid, envelope: msg.envelope as EnvMsg["envelope"] });
-      }
-
-      // Step 2: full source for the last message only
-      const lastUid = allUids[allUids.length - 1];
-      let lastHtml: string | null = null;
-      let lastText: string | null = null;
-      let lastSnippet: string | null = null;
-      let lastMessageId: string | null = null;
-      let lastReferences: string | null = null;
-
-      const { simpleParser } = await import("mailparser");
-      for await (const msg of client.fetch([lastUid], { uid: true, source: true }, { uid: true })) {
+      // Fetch source for all messages in one FETCH command — every message
+      // arrives pre-loaded, eliminating per-expand lazy-load round-trips.
+      const results: MessageMeta[] = [];
+      for await (const msg of client.fetch(allUids, { uid: true, source: true }, { uid: true })) {
         const parsed = await simpleParser(msg.source as Buffer);
-        lastHtml = parsed.html || null;
-        lastText = parsed.text || null;
-        lastSnippet = (parsed.text ?? "").slice(0, 200) || null;
-        lastMessageId = parsed.messageId ?? null;
-        lastReferences = Array.isArray(parsed.references)
+        const snippet = (parsed.text ?? "").slice(0, 200) || null;
+        const references = Array.isArray(parsed.references)
           ? parsed.references.join(" ")
           : (parsed.references ?? null);
+
+        results.push({
+          id: String(msg.uid),
+          messageId: parsed.messageId ?? null,
+          from: parsed.from?.text ?? "",
+          to: parsed.to ? (Array.isArray(parsed.to) ? parsed.to.map((a) => a.text).join(", ") : parsed.to.text) : "",
+          replyTo: parsed.replyTo?.text ?? null,
+          references,
+          date: parsed.date?.toISOString() ?? "",
+          snippet,
+          html: parsed.html || null,
+          text: parsed.text || null,
+          bodyLoaded: true,
+          attachments: [],
+        });
       }
 
-      return envMessages.map((em, i) => {
-        const env = em.envelope;
-        const isLast = i === envMessages.length - 1;
-        const msgId = isLast ? lastMessageId : (env.messageId ?? null);
-        return {
-          id: String(em.uid),
-          messageId: msgId,
-          from: (env.from?.[0] ? fmtAddr(env.from[0]) : ""),
-          to: (env.to ?? []).map(fmtAddr).join(", "),
-          replyTo: env.replyTo?.[0] ? fmtAddr(env.replyTo[0]) : null,
-          references: isLast ? lastReferences : null,
-          date: env.date?.toISOString() ?? "",
-          snippet: isLast ? lastSnippet : null,
-          html: isLast ? lastHtml : null,
-          text: isLast ? lastText : null,
-          bodyLoaded: isLast,
-          // IMAP attachment listing requires a separate BODYSTRUCTURE fetch;
-          // flag presence only for now via the envelope data
-          attachments: [],
-        };
-      });
+      return results;
     } finally {
       lock.release();
     }
-  } finally {
-    await client.logout().catch(() => {});
-  }
+  });
 }
 
 // ─── Route handler ────────────────────────────────────────────────────────────
@@ -178,7 +129,6 @@ export async function GET(
 ) {
   const { id } = await params;
 
-  // Serve from server-side cache if available (TTL: 5 min)
   const cached = serverCacheGet(id);
   if (cached) return NextResponse.json(cached);
 
@@ -201,3 +151,4 @@ export async function GET(
     return NextResponse.json({ error: "Failed to fetch messages" }, { status: 502 });
   }
 }
+

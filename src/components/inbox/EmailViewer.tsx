@@ -89,6 +89,7 @@ export function EmailViewer({
   const [createModalTitle, setCreateModalTitle] = useState<string | null>(null);
   const [summary, setSummary] = useState<string | null>(null);
   const [summarizing, setSummarizing] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     setSummary(null);
@@ -104,12 +105,17 @@ export function EmailViewer({
       return;
     }
 
+    // Cancel any in-flight fetch from a previous thread selection
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     setLoading(true);
     setError("");
     setMessages([]);
     setExpanded(new Set());
 
-    fetch(`/api/threads/${threadId}/messages`)
+    fetch(`/api/threads/${threadId}/messages`, { signal: controller.signal })
       .then((r) => {
         if (!r.ok) throw new Error(`${r.status}`);
         return r.json() as Promise<Message[]>;
@@ -119,8 +125,12 @@ export function EmailViewer({
         setMessages(data);
         if (data.length > 0) setExpanded(new Set([data[data.length - 1].id]));
       })
-      .catch(() => setError("Failed to load messages"))
+      .catch((err) => {
+        if ((err as Error).name !== "AbortError") setError("Failed to load messages");
+      })
       .finally(() => setLoading(false));
+
+    return () => controller.abort();
   }, [threadId]);
 
   const doAction = useCallback(
