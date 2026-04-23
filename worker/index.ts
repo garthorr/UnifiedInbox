@@ -1,7 +1,7 @@
 import cron from "node-cron";
 import { prisma } from "../src/lib/db";
 import { syncAccount, pruneThreadImportLogs } from "../src/lib/gmail/sync";
-import { drainQueue, enqueueSyncJob, pruneOldJobs } from "../src/lib/sync-queue";
+import { drainQueue, enqueueSyncJob, pruneOldJobs, reclaimStuckJobs } from "../src/lib/sync-queue";
 import { drainImapPool } from "../src/lib/imap/pool";
 import { syncTodoistLinks, isConfigured as todoistConfigured } from "../src/lib/todoist";
 
@@ -53,6 +53,7 @@ console.log(`[worker] Scheduling sync every ${SYNC_INTERVAL} minutes`);
 
 cron.schedule(schedule, async () => {
   try {
+    await reclaimStuckJobs(); // reset any jobs orphaned by a prior worker crash
     await enqueueAllAccounts();
     await drainQueue();
     await pruneOldJobs();

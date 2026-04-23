@@ -94,3 +94,15 @@ export async function pruneOldJobs(days = 7): Promise<void> {
     where: { status: { in: ["done", "failed"] }, completedAt: { lt: cutoff } },
   });
 }
+
+/** Reset jobs that have been stuck in 'running' for longer than `maxMinutes`.
+ *  This happens when a worker process is killed mid-sync, leaving the row
+ *  claimed but never completed.  Resetting to 'failed' unblocks future syncs
+ *  for that account — the next cron will re-enqueue and retry. */
+export async function reclaimStuckJobs(maxMinutes = 10): Promise<void> {
+  const cutoff = new Date(Date.now() - maxMinutes * 60 * 1000);
+  await prisma.syncJob.updateMany({
+    where: { status: "running", claimedAt: { lt: cutoff } },
+    data: { status: "failed", completedAt: new Date(), error: "Reclaimed: worker timeout" },
+  });
+}
