@@ -2,7 +2,8 @@ import cron from "node-cron";
 import { prisma } from "../src/lib/db";
 import { syncAccount, pruneThreadImportLogs } from "../src/lib/gmail/sync";
 import { drainQueue, enqueueSyncJob, pruneOldJobs } from "../src/lib/sync-queue";
-import { getTask, isConfigured as todoistConfigured } from "../src/lib/todoist";
+import { drainImapPool } from "../src/lib/imap/pool";
+import { syncTodoistLinks, isConfigured as todoistConfigured } from "../src/lib/todoist";
 
 const SYNC_INTERVAL = process.env.SYNC_INTERVAL_MINUTES ?? "15";
 
@@ -36,52 +37,10 @@ async function runInitialSyncs(): Promise<void> {
 
 async function syncTodoist(): Promise<void> {
   if (!todoistConfigured()) return;
-
-  const links = await prisma.taskLink.findMany({
-    where: {
-      provider: "TODOIST",
-      workItem: { status: { not: "DONE" } },
-    },
-    include: { workItem: { select: { id: true, title: true, status: true } } },
-  });
-  if (links.length === 0) return;
-
-  console.log(`[worker] Checking ${links.length} Todoist task(s)...`);
-
-  for (const link of links) {
-    try {
-      const task = await getTask(link.externalId);
-      const now = new Date();
-
-      if (task.is_completed) {
-        await prisma.$transaction([
-          prisma.workItem.update({
-            where: { id: link.workItemId },
-            data: { status: "DONE" },
-          }),
-          prisma.taskLink.update({
-            where: { id: link.id },
-            data: { externalStatus: "completed", lastSyncAt: now },
-          }),
-          prisma.activityLog.create({
-            data: {
-              eventType: "WORK_ITEM_STATUS_CHANGED",
-              workItemId: link.workItemId,
-              description: `Marked DONE via Todoist completion`,
-              metadata: { from: link.workItem.status, to: "DONE", todoistTaskId: link.externalId },
-            },
-          }),
-        ]);
-        console.log(`[worker] ✓ Todoist→DONE: ${link.workItem.title}`);
-      } else {
-        await prisma.taskLink.update({
-          where: { id: link.id },
-          data: { lastSyncAt: now },
-        });
-      }
-    } catch (err) {
-      console.error(`[worker] ✗ Todoist sync failed for task ${link.externalId}:`, err);
-    }
+  const { synced, completed, errors } = await syncTodoistLinks();
+  if (synced > 0 || errors.length > 0) {
+    console.log(`[worker] Todoist: ${synced} synced, ${completed} completed, ${errors.length} error(s)`);
+    errors.forEach((e) => console.error(`[worker] Todoist error: ${e}`));
   }
 }
 
@@ -117,6 +76,7 @@ console.log("[worker] Started. Waiting for scheduled syncs...");
 
 process.on("SIGTERM", async () => {
   console.log("[worker] Shutting down...");
+  drainImapPool();
   await prisma.$disconnect();
   process.exit(0);
 });

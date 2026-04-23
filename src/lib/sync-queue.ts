@@ -1,36 +1,54 @@
 import { prisma } from "@/lib/db";
 import { syncAccount } from "@/lib/gmail/sync";
 
-/** Enqueue a sync job for one account. Deduplicates: if a pending job already
- *  exists for this account, returns the existing job rather than creating a duplicate. */
-export async function enqueueSyncJob(accountId: string) {
-  const existing = await prisma.syncJob.findFirst({
-    where: { accountId, status: "pending" },
-    select: { id: true },
-  });
-  if (existing) return existing;
-
-  return prisma.syncJob.create({
-    data: { accountId, status: "pending" },
-  });
+function isPrismaUniqueError(err: unknown): boolean {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    "code" in err &&
+    (err as { code: string }).code === "P2002"
+  );
 }
 
-/** Atomically claim the oldest pending job and run it.
- *  Returns true if a job was processed, false if the queue was empty. */
-export async function drainOneJob(): Promise<boolean> {
-  // Atomic claim: find + update in a transaction to prevent double-processing
-  const job = await prisma.$transaction(async (tx) => {
-    const pending = await tx.syncJob.findFirst({
-      where: { status: "pending" },
-      orderBy: { createdAt: "asc" },
+/** Enqueue a sync job for one account.
+ *  Relies on the DB unique partial index on (accountId) WHERE status='pending'
+ *  to prevent duplicates atomically — no TOCTOU window. */
+export async function enqueueSyncJob(accountId: string) {
+  try {
+    return await prisma.syncJob.create({
+      data: { accountId, status: "pending" },
     });
-    if (!pending) return null;
-    return tx.syncJob.update({
-      where: { id: pending.id },
-      data: { status: "running", claimedAt: new Date() },
-    });
-  });
+  } catch (err) {
+    if (isPrismaUniqueError(err)) {
+      // A pending job already exists — return it
+      return prisma.syncJob.findFirstOrThrow({
+        where: { accountId, status: "pending" },
+        select: { id: true },
+      });
+    }
+    throw err;
+  }
+}
 
+/** Atomically claim the oldest pending job using SELECT FOR UPDATE SKIP LOCKED.
+ *  Safe for concurrent callers — each picks a distinct job with no race. */
+export async function drainOneJob(): Promise<boolean> {
+  const claimed = await prisma.$queryRaw<Array<{ id: string; accountId: string }>>`
+    UPDATE "SyncJob"
+    SET    status = 'running',
+           "claimedAt" = NOW(),
+           "updatedAt" = NOW()
+    WHERE  id = (
+      SELECT id FROM "SyncJob"
+      WHERE  status = 'pending'
+      ORDER  BY "createdAt" ASC
+      LIMIT  1
+      FOR UPDATE SKIP LOCKED
+    )
+    RETURNING id, "accountId"
+  `;
+
+  const job = claimed[0] ?? null;
   if (!job) return false;
 
   try {
@@ -49,9 +67,23 @@ export async function drainOneJob(): Promise<boolean> {
   return true;
 }
 
-/** Drain all pending jobs sequentially (used by worker after cron enqueue). */
-export async function drainQueue(): Promise<void> {
-  while (await drainOneJob()) { /* continue until empty */ }
+// Mutex: prevents two cron ticks from running concurrent drains in the same process.
+let drainingQueue = false;
+
+/** Drain all pending jobs with up to `concurrency` parallel workers.
+ *  No-ops if a drain is already in progress (guards against cron overlap). */
+export async function drainQueue(concurrency = 3): Promise<void> {
+  if (drainingQueue) return;
+  drainingQueue = true;
+  try {
+    await Promise.all(
+      Array.from({ length: concurrency }, () =>
+        (async () => { while (await drainOneJob()) { /* next job */ } })()
+      )
+    );
+  } finally {
+    drainingQueue = false;
+  }
 }
 
 /** Prune finished jobs older than `days` days to keep the table small. */
