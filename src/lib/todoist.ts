@@ -48,7 +48,7 @@ async function fetchAllPages<T>(url: string, label: string): Promise<T[]> {
       const text = await res.text();
       throw new Error(`Todoist ${label} failed ${res.status}: ${text}`);
     }
-    const data: { results: T[]; next_cursor: string | null; has_more: boolean } = await res.json();
+    const data = await res.json() as { results: T[]; next_cursor: string | null; has_more: boolean };
     all.push(...data.results);
     cursor = data.has_more ? data.next_cursor : null;
   } while (cursor);
@@ -103,7 +103,7 @@ export async function createTask(opts: {
     const text = await res.text();
     throw new Error(`Todoist createTask failed ${res.status}: ${text}`);
   }
-  return res.json();
+  return res.json() as Promise<TodoistTask>;
 }
 
 export async function getTask(taskId: string): Promise<TodoistTask> {
@@ -114,7 +114,7 @@ export async function getTask(taskId: string): Promise<TodoistTask> {
     const text = await res.text();
     throw new Error(`Todoist getTask failed ${res.status}: ${text}`);
   }
-  return res.json();
+  return res.json() as Promise<TodoistTask>;
 }
 
 export async function closeTask(taskId: string): Promise<void> {
