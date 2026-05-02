@@ -10,6 +10,7 @@ const PUBLIC_PATHS = [
   "/api/auth/logout",
   "/api/auth/connect",
   "/api/auth/callback",
+  "/api/health",
 ];
 
 // Static file extensions — bypass auth entirely

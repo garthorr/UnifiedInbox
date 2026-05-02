@@ -110,7 +110,12 @@ async function getImapMessages(accountId: string, threadId: string): Promise<Mes
           html: parsed.html || null,
           text: parsed.text || null,
           bodyLoaded: true,
-          attachments: [],
+          attachments: (parsed.attachments ?? []).map((att, idx) => ({
+            id: `${msg.uid}:${idx}`,
+            filename: att.filename ?? "attachment",
+            mimeType: att.contentType ?? "application/octet-stream",
+            size: att.size ?? 0,
+          })),
         });
       }
 
