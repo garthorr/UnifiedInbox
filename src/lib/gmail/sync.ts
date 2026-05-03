@@ -127,7 +127,7 @@ async function upsertThread(
   thread: gmail_v1.Schema$Thread
 ): Promise<{ id: string; isNew: boolean }> {
   const messages = thread.messages ?? [];
-  if (messages.length === 0) return;
+  if (messages.length === 0) return { id: "", isNew: false };
 
   const firstMsg = messages[0];
   const lastMsg = messages[messages.length - 1];
