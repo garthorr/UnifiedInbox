@@ -66,7 +66,7 @@ async function InboxContent({ searchParams }: PageProps) {
 
   const accounts = await prisma.account.findMany({
     where: { isActive: true },
-    select: { id: true, email: true },
+    select: { id: true, email: true, displayName: true },
     orderBy: { createdAt: "asc" },
   });
 
@@ -158,7 +158,7 @@ async function InboxContent({ searchParams }: PageProps) {
           </div>
         </div>
       )}
-      <InboxPane threads={threads} labelMap={labelMap} todoistEnabled={todoistConfigured()} />
+      <InboxPane threads={threads} labelMap={labelMap} todoistEnabled={todoistConfigured()} accounts={accounts} />
     </div>
   );
 }

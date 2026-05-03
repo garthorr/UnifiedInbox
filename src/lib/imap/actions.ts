@@ -98,6 +98,32 @@ export async function trashThread(accountId: string, threadMessageId: string) {
   });
 }
 
+// ─── Send email ──────────────────────────────────────────────────────────────
+
+export async function sendEmail(
+  accountId: string,
+  opts: { to: string; subject: string; body: string }
+) {
+  const account = await prisma.account.findUniqueOrThrow({
+    where: { id: accountId },
+    select: { email: true, displayName: true, smtpHost: true, smtpPort: true, accessToken: true },
+  });
+  if (!account.smtpHost) throw new Error("No SMTP host configured for this account.");
+
+  const transport = nodemailer.createTransport({
+    host: account.smtpHost,
+    port: account.smtpPort ?? 587,
+    secure: (account.smtpPort ?? 587) === 465,
+    auth: { user: account.email, pass: decrypt(account.accessToken) },
+  });
+
+  const from = account.displayName
+    ? `${account.displayName} <${account.email}>`
+    : account.email;
+
+  await transport.sendMail({ from, to: opts.to, subject: opts.subject, text: opts.body });
+}
+
 // ─── Send reply ──────────────────────────────────────────────────────────────
 
 export async function sendReply(

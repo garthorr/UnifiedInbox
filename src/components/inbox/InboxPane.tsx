@@ -4,6 +4,7 @@ import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { ThreadList } from "./ThreadList";
 import { BulkActionBar } from "./BulkActionBar";
 import { EmailViewer } from "./EmailViewer";
+import { ComposeEmail } from "./ComposeEmail";
 import { CreateWorkItemModal } from "@/components/work-items/CreateWorkItemModal";
 import { messageCache } from "@/lib/client-message-cache";
 
@@ -26,18 +27,26 @@ interface Thread {
 
 type LabelInfo = { name: string; color: string | null };
 
+interface Account {
+  id: string;
+  email: string;
+  displayName: string;
+}
+
 interface InboxPaneProps {
   threads: Thread[];
   labelMap?: Record<string, Record<string, LabelInfo>>;
   todoistEnabled?: boolean;
+  accounts?: Account[];
 }
 
-export function InboxPane({ threads, labelMap = {}, todoistEnabled = false }: InboxPaneProps) {
+export function InboxPane({ threads, labelMap = {}, todoistEnabled = false, accounts = [] }: InboxPaneProps) {
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [unreadOverrides, setUnreadOverrides] = useState<Record<string, boolean>>({});
   const [staleIds, setStaleIds] = useState<Set<string>>(new Set());
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
   const [showBulkCreateModal, setShowBulkCreateModal] = useState(false);
+  const [showCompose, setShowCompose] = useState(false);
 
   const lastCheckedIndexRef = useRef<number | null>(null);
 
@@ -197,12 +206,21 @@ export function InboxPane({ threads, labelMap = {}, todoistEnabled = false }: In
         if (prev) setSelectedThreadId(prev.id);
       } else if (e.key === "Escape") {
         setSelectedThreadId(null);
+      } else if (e.key === "c" || e.key === "C") {
+        setShowCompose(true);
       }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Compose accounts: prefer prop, fall back to unique accounts from threads
+  const composeAccounts = accounts.length > 0
+    ? accounts
+    : Array.from(
+        new Map(threads.map((t) => [t.account.id, t.account])).values()
+      );
 
   return (
     <div className="flex flex-1 overflow-hidden h-full">
@@ -211,7 +229,7 @@ export function InboxPane({ threads, labelMap = {}, todoistEnabled = false }: In
           selectedThreadId ? "w-[380px]" : "w-full"
         }`}
       >
-        {anyChecked && (
+        {anyChecked ? (
           <BulkActionBar
             count={checkedIds.size}
             allCount={threadsWithOverrides.length}
@@ -222,7 +240,21 @@ export function InboxPane({ threads, labelMap = {}, todoistEnabled = false }: In
             onMarkRead={() => handleBulkAction("markRead")}
             onMarkUnread={() => handleBulkAction("markUnread")}
             onCreateWorkItem={() => setShowBulkCreateModal(true)}
+            onDelete={() => handleBulkAction("trash")}
           />
+        ) : (
+          <div className="flex items-center justify-end px-3 py-1.5 border-b">
+            <button
+              onClick={() => setShowCompose(true)}
+              className="flex items-center gap-1.5 text-xs font-medium text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-md px-2.5 py-1 transition-colors"
+              title="Compose new email (C)"
+            >
+              <svg className="h-3.5 w-3.5" viewBox="0 0 16 16" fill="currentColor">
+                <path d="M11.013 1.427a1.75 1.75 0 0 1 2.474 0l1.086 1.086a1.75 1.75 0 0 1 0 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 0 1-.927-.928l.929-3.25c.081-.286.235-.547.445-.758l8.61-8.61zm.176 4.823L9.75 4.81l-6.286 6.287a.253.253 0 0 0-.064.108l-.558 1.953 1.953-.558a.253.253 0 0 0 .108-.064Zm1.238-3.763a.25.25 0 0 0-.354 0L10.811 3.75l1.439 1.44 1.263-1.263a.25.25 0 0 0 0-.354Z" />
+              </svg>
+              Compose
+            </button>
+          </div>
         )}
         <ThreadList
           threads={threadsWithOverrides}
@@ -263,6 +295,14 @@ export function InboxPane({ threads, labelMap = {}, todoistEnabled = false }: In
             setShowBulkCreateModal(false);
             setCheckedIds(new Set());
           }}
+        />
+      )}
+
+      {showCompose && composeAccounts.length > 0 && (
+        <ComposeEmail
+          accounts={composeAccounts}
+          defaultAccountId={composeAccounts[0].id}
+          onClose={() => setShowCompose(false)}
         />
       )}
     </div>
