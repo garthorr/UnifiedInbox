@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { prisma } from "@/lib/db";
 import { isConfigured as todoistConfigured } from "@/lib/todoist";
 import { AppShell } from "@/components/layout/AppShell";

@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { prisma } from "@/lib/db";
 import { AppShell } from "@/components/layout/AppShell";
 import { KanbanBoard, type KanbanSwimlane } from "@/components/work-items/KanbanBoard";
