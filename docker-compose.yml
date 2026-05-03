@@ -36,7 +36,7 @@ services:
       - "traefik.http.routers.unified-inbox.rule=Host(`inbox.home.tastymath.com`)"
       - "traefik.http.routers.unified-inbox.entrypoints=websecure"
       - "traefik.http.routers.unified-inbox.tls=true"
-      - "traefik.http.routers.unified-inbox.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.unified-inbox.tls.certresolver=le"
       - "traefik.http.services.unified-inbox.loadbalancer.server.port=3000"
 
   worker:
