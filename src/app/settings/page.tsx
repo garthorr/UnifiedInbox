@@ -54,7 +54,16 @@ export default async function SettingsPage() {
           sortOrder: d.sortOrder,
           workItemCount: d._count.workItems,
         }))}
-        rules={rules}
+        rules={rules.map((r) => ({
+          id: r.id,
+          name: r.name,
+          isActive: r.isActive,
+          priority: r.priority,
+          conditions: r.conditions as { field: string; operator: string; value: string }[],
+          action: r.action,
+          domainId: r.domainId,
+          domain: r.domain,
+        }))}
       />
     </AppShell>
   );
