@@ -22,14 +22,19 @@ ENV NODE_ENV=production
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
-# Prisma engine binaries and CLI are not bundled into .next/standalone automatically
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
-COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
-COPY --from=builder /app/prisma ./prisma
 EXPOSE 3000
-# Run migrations before starting — prisma migrate deploy is idempotent
-CMD ["sh", "-c", "node node_modules/prisma/build/index.js migrate deploy && node server.js"]
+CMD ["node", "server.js"]
+
+FROM base AS migrate
+RUN apk add --no-cache libc6-compat
+ENV NODE_ENV=production
+COPY package*.json ./
+RUN npm ci --omit=dev
+COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder /app/prisma ./prisma
+CMD ["node", "node_modules/prisma/build/index.js", "migrate", "deploy"]
 
 FROM base AS worker-production
 RUN apk add --no-cache libc6-compat
