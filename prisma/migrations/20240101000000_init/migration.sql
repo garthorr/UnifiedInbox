@@ -1,3 +1,6 @@
+-- CreateSchema
+CREATE SCHEMA IF NOT EXISTS "public";
+
 -- CreateEnum
 CREATE TYPE "WorkItemStatus" AS ENUM ('NEW', 'ACTIVE', 'WAITING', 'DELEGATED', 'TODOIST', 'DONE');
 
@@ -171,9 +174,6 @@ CREATE INDEX "SyncJob_status_createdAt_idx" ON "SyncJob"("status", "createdAt");
 CREATE INDEX "SyncJob_accountId_status_idx" ON "SyncJob"("accountId", "status");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "ThreadMirror_gmailThreadId_accountId_key" ON "ThreadMirror"("gmailThreadId", "accountId");
-
--- CreateIndex
 CREATE INDEX "ThreadMirror_accountId_idx" ON "ThreadMirror"("accountId");
 
 -- CreateIndex
@@ -201,10 +201,13 @@ CREATE INDEX "ThreadMirror_domainId_isStale_lastMessageAt_idx" ON "ThreadMirror"
 CREATE INDEX "ThreadMirror_workItemId_isStale_idx" ON "ThreadMirror"("workItemId", "isStale");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "Label_accountId_gmailLabelId_key" ON "Label"("accountId", "gmailLabelId");
+CREATE UNIQUE INDEX "ThreadMirror_gmailThreadId_accountId_key" ON "ThreadMirror"("gmailThreadId", "accountId");
 
 -- CreateIndex
 CREATE INDEX "Label_accountId_idx" ON "Label"("accountId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Label_accountId_gmailLabelId_key" ON "Label"("accountId", "gmailLabelId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Domain_name_key" ON "Domain"("name");
