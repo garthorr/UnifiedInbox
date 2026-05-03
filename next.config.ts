@@ -43,7 +43,7 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ["imapflow", "mailparser"],
   experimental: {
     serverActions: {
-      allowedOrigins: ["localhost:3000", "inbox.tastymath.com:3000"],
+      allowedOrigins: ["localhost:3000", "inbox.tastymath.com:3000", "inbox.home.tastymath.com"],
     },
   },
   async headers() {
