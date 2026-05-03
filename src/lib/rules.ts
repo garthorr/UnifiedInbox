@@ -81,7 +81,7 @@ export async function applyRulesToThread(threadId: string): Promise<void> {
   let domainAssigned = false;
 
   for (const rule of rules) {
-    const conditions = rule.conditions as RuleCondition[];
+    const conditions = (rule.conditions as unknown) as RuleCondition[];
     if (!conditions.every((c) => matchCondition(c, thread))) continue;
 
     if (
