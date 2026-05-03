@@ -37,6 +37,5 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# prisma
-prisma/migrations/
+# prisma — migrations/ must be committed (used by prisma migrate deploy)
 data/

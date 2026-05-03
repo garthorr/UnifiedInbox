@@ -1,5 +1,8 @@
 import cron from "node-cron";
+import { validateEnv } from "../src/lib/env";
 import { prisma } from "../src/lib/db";
+
+validateEnv();
 import { syncAccount, pruneThreadImportLogs } from "../src/lib/gmail/sync";
 import { drainQueue, enqueueSyncJob, pruneOldJobs, reclaimStuckJobs } from "../src/lib/sync-queue";
 import { drainImapPool } from "../src/lib/imap/pool";
@@ -75,9 +78,12 @@ cron.schedule("*/30 * * * * *", async () => {
 
 console.log("[worker] Started. Waiting for scheduled syncs...");
 
-process.on("SIGTERM", async () => {
+async function shutdown() {
   console.log("[worker] Shutting down...");
   drainImapPool();
   await prisma.$disconnect();
   process.exit(0);
-});
+}
+
+process.on("SIGTERM", shutdown);
+process.on("SIGINT", shutdown);

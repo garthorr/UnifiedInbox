@@ -3,14 +3,15 @@ services:
     image: postgres:16-alpine
     environment:
       POSTGRES_DB: unified_inbox
-      POSTGRES_USER: app
-      POSTGRES_PASSWORD: devpassword
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - ./data/postgres:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
+    networks:
+      - internal
+    restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U app -d unified_inbox"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d unified_inbox"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -18,34 +19,40 @@ services:
   web:
     build:
       context: .
-      target: dev
-    command: sh -c "npx prisma db push --skip-generate && npx prisma db seed; npm run dev"
-    volumes:
-      - .:/app
-      - /app/node_modules
-      - /app/.next
-    ports:
-      - "3000:3000"
+      target: production
     depends_on:
       db:
         condition: service_healthy
     env_file: .env
     environment:
-      DATABASE_URL: postgresql://app:devpassword@db:5432/unified_inbox
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/unified_inbox
+    networks:
+      - internal
+      - traefik
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.unified-inbox.rule=Host(`inbox.home.tastymath.com`)"
+      - "traefik.http.routers.unified-inbox.entrypoints=websecure"
+      - "traefik.http.routers.unified-inbox.tls=true"
+      - "traefik.http.routers.unified-inbox.tls.certresolver=letsencrypt"
+      - "traefik.http.services.unified-inbox.loadbalancer.server.port=3000"
 
   worker:
     build:
       context: .
-      target: dev
-    command: npm run worker
-    restart: unless-stopped
-    volumes:
-      - .:/app
-      - /app/node_modules
+      target: worker-production
     depends_on:
       db:
         condition: service_healthy
     env_file: .env
     environment:
-      DATABASE_URL: postgresql://app:devpassword@db:5432/unified_inbox
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/unified_inbox
+    networks:
+      - internal
+    restart: unless-stopped
 
+networks:
+  internal:
+  traefik:
+    external: true
