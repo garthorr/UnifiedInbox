@@ -67,11 +67,12 @@ export async function GET(
       }
 
       const filename = safeFilename(att.filename ?? "attachment");
-      return new Response(att.content, {
+      const bytes = new Uint8Array(att.content);
+      return new Response(bytes, {
         headers: {
           "Content-Type": att.contentType ?? "application/octet-stream",
           "Content-Disposition": `attachment; filename="${filename}"`,
-          "Content-Length": att.content.length.toString(),
+          "Content-Length": bytes.length.toString(),
         },
       });
     } catch (err) {
