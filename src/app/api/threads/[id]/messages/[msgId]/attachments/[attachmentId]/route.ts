@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getGmailClient } from "@/lib/gmail/client";
 import { withImap } from "@/lib/imap/pool";
+import type { gmail_v1 } from "googleapis";
 
 // Sanitize a filename for use in Content-Disposition — strip control characters
 // and path traversal characters, fall back to "attachment" if empty.
@@ -96,7 +97,7 @@ export async function GET(
         format: "metadata",
         metadataHeaders: [],
       });
-      function findPart(parts: typeof msgRes.data.payload.parts, id: string): string | null {
+      function findPart(parts: gmail_v1.Schema$MessagePart[] | null | undefined, id: string): string | null {
         if (!parts) return null;
         for (const p of parts) {
           if (p.body?.attachmentId === id && p.filename) return p.filename;
