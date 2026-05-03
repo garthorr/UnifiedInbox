@@ -33,7 +33,7 @@ export function buildSessionCookie(): {
   options: {
     httpOnly: boolean;
     secure: boolean;
-    sameSite: "strict";
+    sameSite: "lax";
     maxAge: number;
     path: string;
   };
@@ -45,7 +45,7 @@ export function buildSessionCookie(): {
     options: {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
-      sameSite: "strict",
+      sameSite: "lax",
       maxAge: COOKIE_MAX_AGE,
       path: "/",
     },
