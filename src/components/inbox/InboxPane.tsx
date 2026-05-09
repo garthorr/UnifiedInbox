@@ -135,52 +135,93 @@ export function InboxPane({ threads, labelMap = {}, todoistEnabled = false, acco
   }, []);
 
   const handleArchiveSingle = useCallback(async (id: string) => {
-    await fetch(`/api/threads/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "archive" }),
-    });
-    handleStale(id);
+    handleStale(id); // optimistic — remove immediately
+    try {
+      const res = await fetch(`/api/threads/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "archive" }),
+      });
+      if (!res.ok) throw new Error();
+    } catch {
+      setStaleIds((prev) => { const next = new Set(prev); next.delete(id); return next; });
+    }
   }, []);
 
   const handleArchiveSingleRef = useRef(handleArchiveSingle);
   handleArchiveSingleRef.current = handleArchiveSingle;
 
   const handleMarkReadToggle = useCallback(async (id: string, currentlyUnread: boolean) => {
-    await fetch(`/api/threads/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: currentlyUnread ? "markRead" : "markUnread" }),
-    });
-    setUnreadOverrides((prev) => ({ ...prev, [id]: !currentlyUnread }));
+    setUnreadOverrides((prev) => ({ ...prev, [id]: !currentlyUnread })); // optimistic
+    try {
+      const res = await fetch(`/api/threads/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: currentlyUnread ? "markRead" : "markUnread" }),
+      });
+      if (!res.ok) throw new Error();
+    } catch {
+      setUnreadOverrides((prev) => ({ ...prev, [id]: currentlyUnread })); // rollback
+    }
   }, []);
 
   const handleBulkAction = useCallback(
     async (action: "archive" | "trash" | "markRead" | "markUnread") => {
       const ids = [...checkedIds];
       if (!ids.length) return;
+
+      // Optimistic update
+      if (action === "archive" || action === "trash") {
+        setStaleIds((prev) => new Set([...prev, ...ids]));
+        setSelectedThreadId((prev) => (prev && ids.includes(prev) ? null : prev));
+        setCheckedIds(new Set());
+      } else {
+        const isUnread = action === "markUnread";
+        setUnreadOverrides((prev) => {
+          const next = { ...prev };
+          ids.forEach((id) => { next[id] = isUnread; });
+          return next;
+        });
+        setCheckedIds(new Set());
+      }
+
       const res = await fetch("/api/threads/bulk", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ threadIds: ids, action }),
       });
-      if (!res.ok && res.status !== 207) return;
+      if (!res.ok && res.status !== 207) {
+        // Full failure — rollback all
+        if (action === "archive" || action === "trash") {
+          setStaleIds((prev) => { const next = new Set(prev); ids.forEach((id) => next.delete(id)); return next; });
+          setCheckedIds(new Set(ids));
+        } else {
+          const wasUnread = action === "markUnread"; // reverse: undo what we set
+          setUnreadOverrides((prev) => {
+            const next = { ...prev };
+            ids.forEach((id) => { next[id] = !wasUnread; });
+            return next;
+          });
+          setCheckedIds(new Set(ids));
+        }
+        return;
+      }
 
       const { failedIds = [] }: { updated: number; failedIds: string[] } = await res.json();
-      const successIds = ids.filter((id) => !failedIds.includes(id));
-
-      if (action === "archive" || action === "trash") {
-        setStaleIds((prev) => new Set([...prev, ...successIds]));
-        setSelectedThreadId((prev) => (prev && successIds.includes(prev) ? null : prev));
-      } else {
-        const isUnread = action === "markUnread";
-        setUnreadOverrides((prev) => {
-          const next = { ...prev };
-          successIds.forEach((id) => { next[id] = isUnread; });
-          return next;
-        });
+      if (failedIds.length > 0) {
+        // Partial failure — rollback only the ones that failed
+        if (action === "archive" || action === "trash") {
+          setStaleIds((prev) => { const next = new Set(prev); failedIds.forEach((id) => next.delete(id)); return next; });
+        } else {
+          const wasUnread = action === "markUnread";
+          setUnreadOverrides((prev) => {
+            const next = { ...prev };
+            failedIds.forEach((id) => { next[id] = !wasUnread; });
+            return next;
+          });
+        }
+        setCheckedIds(new Set(failedIds));
       }
-      setCheckedIds(new Set(failedIds)); // keep failed ones checked so user can retry
     },
     [checkedIds]
   );
@@ -233,11 +274,7 @@ export function InboxPane({ threads, labelMap = {}, todoistEnabled = false, acco
 
   return (
     <div className="flex flex-1 overflow-hidden h-full">
-      <div
-        className={`flex-shrink-0 overflow-y-auto border-r flex flex-col ${
-          selectedThreadId ? "w-[380px]" : "w-full"
-        }`}
-      >
+      <div className="flex-shrink-0 w-[380px] overflow-y-auto border-r flex flex-col" style={{ borderColor: "var(--ds-line)" }}>
         {anyChecked ? (
           <BulkActionBar
             count={checkedIds.size}
@@ -279,8 +316,8 @@ export function InboxPane({ threads, labelMap = {}, todoistEnabled = false, acco
         />
       </div>
 
-      {selectedThread && (
-        <div className="flex-1 overflow-hidden">
+      <div className="flex-1 overflow-hidden">
+        {selectedThread ? (
           <EmailViewer
             threadId={selectedThread.id}
             gmailThreadId={selectedThread.gmailThreadId}
@@ -293,8 +330,26 @@ export function InboxPane({ threads, labelMap = {}, todoistEnabled = false, acco
               setUnreadOverrides((prev) => ({ ...prev, [selectedThread.id]: v }))
             }
           />
-        </div>
-      )}
+        ) : (
+          <div className="flex h-full flex-col items-center justify-center gap-2 select-none">
+            <svg
+              className="h-8 w-8 opacity-15"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              style={{ color: "var(--ds-ink)" }}
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+            </svg>
+            <p className="text-sm" style={{ color: "var(--ds-muted)" }}>
+              Select a thread to read
+            </p>
+            <p className="text-xs" style={{ color: "var(--ds-muted)", opacity: 0.6 }}>
+              Use <kbd className="font-mono bg-black/5 px-1 py-0.5 rounded text-[11px]">j</kbd> / <kbd className="font-mono bg-black/5 px-1 py-0.5 rounded text-[11px]">k</kbd> to navigate
+            </p>
+          </div>
+        )}
+      </div>
 
       {showBulkCreateModal && checkedThreads.length > 0 && (
         <CreateWorkItemModal
