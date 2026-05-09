@@ -143,6 +143,9 @@ export function InboxPane({ threads, labelMap = {}, todoistEnabled = false, acco
     handleStale(id);
   }, []);
 
+  const handleArchiveSingleRef = useRef(handleArchiveSingle);
+  handleArchiveSingleRef.current = handleArchiveSingle;
+
   const handleMarkReadToggle = useCallback(async (id: string, currentlyUnread: boolean) => {
     await fetch(`/api/threads/${id}`, {
       method: "PATCH",
@@ -206,6 +209,12 @@ export function InboxPane({ threads, labelMap = {}, todoistEnabled = false, acco
         if (prev) setSelectedThreadId(prev.id);
       } else if (e.key === "Escape") {
         setSelectedThreadId(null);
+      } else if (e.key === "e" && currentId) {
+        e.preventDefault();
+        handleArchiveSingleRef.current(currentId);
+      } else if (e.key === "Enter" && !currentId) {
+        const first = threads[0];
+        if (first) setSelectedThreadId(first.id);
       } else if (e.key === "c" || e.key === "C") {
         setShowCompose(true);
       }

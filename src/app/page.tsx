@@ -10,6 +10,7 @@ import { AppShell } from "@/components/layout/AppShell";
 import { InboxFilters } from "@/components/inbox/InboxFilters";
 import { InboxPane } from "@/components/inbox/InboxPane";
 import { SyncAllButton } from "@/components/inbox/SyncAllButton";
+import { InboxSkeleton } from "@/components/inbox/InboxSkeleton";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { DomainBadge } from "@/components/shared/DomainBadge";
 
@@ -66,9 +67,15 @@ async function InboxContent({ searchParams }: PageProps) {
 
   const accounts = await prisma.account.findMany({
     where: { isActive: true },
-    select: { id: true, email: true, displayName: true },
+    select: { id: true, email: true, displayName: true, lastSyncAt: true },
     orderBy: { createdAt: "asc" },
   });
+
+  const lastSyncAt = accounts
+    .map((a) => a.lastSyncAt)
+    .filter(Boolean)
+    .sort((a, b) => new Date(b!).getTime() - new Date(a!).getTime())[0]
+    ?.toISOString() ?? null;
 
   const accountIds = accounts.map((a) => a.id);
 
@@ -134,7 +141,7 @@ async function InboxContent({ searchParams }: PageProps) {
             unreadCount={unreadCount}
           />
           <div className="ml-auto pt-1 flex items-center gap-2 flex-shrink-0">
-            <SyncAllButton />
+            <SyncAllButton lastSyncAt={lastSyncAt} />
           </div>
         </div>
       </div>
@@ -166,11 +173,7 @@ async function InboxContent({ searchParams }: PageProps) {
 export default function HomePage({ searchParams }: PageProps) {
   return (
     <AppShell>
-      <Suspense
-        fallback={
-          <div className="py-16 text-center text-sm text-slate-400">Loading...</div>
-        }
-      >
+      <Suspense fallback={<InboxSkeleton />}>
         <InboxContent searchParams={searchParams} />
       </Suspense>
     </AppShell>
