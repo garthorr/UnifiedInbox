@@ -37,11 +37,11 @@ export function BulkActionBar({
         className="h-3.5 w-3.5 rounded border-slate-300 accent-blue-600 cursor-pointer flex-shrink-0"
         title={allSelected ? "Deselect all" : "Select all"}
       />
-      <span className="text-xs font-medium text-blue-700 min-w-[60px]">
+      <span className="text-xs font-medium text-blue-700 min-w-[60px] flex-shrink-0">
         {count} selected
       </span>
 
-      <div className="flex items-center gap-0.5">
+      <div className="flex items-center gap-0.5 overflow-x-auto flex-1 min-w-0">
         <Button
           variant="ghost"
           size="sm"
@@ -106,7 +106,7 @@ export function BulkActionBar({
       <Button
         variant="ghost"
         size="icon"
-        className="h-6 w-6 ml-auto text-slate-400 hover:text-slate-700"
+        className="h-6 w-6 flex-shrink-0 text-slate-400 hover:text-slate-700"
         onClick={onClearAll}
         title="Clear selection"
       >
