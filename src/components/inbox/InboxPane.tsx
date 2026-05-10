@@ -7,6 +7,7 @@ import { BulkActionBar } from "./BulkActionBar";
 import { EmailViewer } from "./EmailViewer";
 import { ComposeEmail } from "./ComposeEmail";
 import { CreateWorkItemModal } from "@/components/work-items/CreateWorkItemModal";
+import { BulkAssignWorkItemModal } from "@/components/work-items/BulkAssignWorkItemModal";
 import { messageCache } from "@/lib/client-message-cache";
 import { cn } from "@/lib/utils";
 
@@ -48,6 +49,7 @@ export function InboxPane({ threads, labelMap = {}, todoistEnabled = false, acco
   const [staleIds, setStaleIds] = useState<Set<string>>(new Set());
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
   const [showBulkCreateModal, setShowBulkCreateModal] = useState(false);
+  const [showBulkAssignModal, setShowBulkAssignModal] = useState(false);
   const [showCompose, setShowCompose] = useState(false);
 
   const lastCheckedIndexRef = useRef<number | null>(null);
@@ -296,6 +298,7 @@ export function InboxPane({ threads, labelMap = {}, todoistEnabled = false, acco
             onMarkRead={() => handleBulkAction("markRead")}
             onMarkUnread={() => handleBulkAction("markUnread")}
             onCreateWorkItem={() => setShowBulkCreateModal(true)}
+            onAssignToWorkItem={() => setShowBulkAssignModal(true)}
             onDelete={() => handleBulkAction("trash")}
           />
         ) : (
@@ -395,6 +398,18 @@ export function InboxPane({ threads, labelMap = {}, todoistEnabled = false, acco
           todoistEnabled={todoistEnabled}
           onClose={() => {
             setShowBulkCreateModal(false);
+            setCheckedIds(new Set());
+          }}
+        />
+      )}
+
+
+
+      {showBulkAssignModal && checkedThreads.length > 0 && (
+        <BulkAssignWorkItemModal
+          threadIds={checkedThreads.map((t) => t.id)}
+          onClose={() => {
+            setShowBulkAssignModal(false);
             setCheckedIds(new Set());
           }}
         />
