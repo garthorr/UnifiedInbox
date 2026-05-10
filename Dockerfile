@@ -32,6 +32,7 @@ COPY --from=builder /app/node_modules/@prisma/debug ./node_modules/@prisma/debug
 COPY --from=builder /app/node_modules/@prisma/fetch-engine ./node_modules/@prisma/fetch-engine
 COPY --from=builder /app/node_modules/@prisma/config ./node_modules/@prisma/config
 COPY --from=builder /app/node_modules/effect ./node_modules/effect
+COPY --from=builder /app/node_modules/fast-check ./node_modules/fast-check
 COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
 COPY --from=builder /app/prisma ./prisma
 EXPOSE 3000
