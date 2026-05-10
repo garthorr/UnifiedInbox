@@ -15,7 +15,7 @@ COPY package*.json ./
 RUN npm ci
 COPY . .
 RUN npx prisma generate
-RUN npm run build && npm run worker:build
+RUN npm run build && npm run worker:build && npx --yes tsc-alias -p worker/tsconfig.json
 
 FROM base AS production
 ENV NODE_ENV=production
@@ -31,6 +31,7 @@ COPY --from=builder /app/node_modules/@prisma/get-platform ./node_modules/@prism
 COPY --from=builder /app/node_modules/@prisma/debug ./node_modules/@prisma/debug
 COPY --from=builder /app/node_modules/@prisma/fetch-engine ./node_modules/@prisma/fetch-engine
 COPY --from=builder /app/node_modules/@prisma/config ./node_modules/@prisma/config
+COPY --from=builder /app/node_modules/effect ./node_modules/effect
 COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
 COPY --from=builder /app/prisma ./prisma
 EXPOSE 3000
