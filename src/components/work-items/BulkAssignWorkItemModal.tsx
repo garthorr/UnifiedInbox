@@ -27,17 +27,12 @@ export function BulkAssignWorkItemModal({ threadIds, onClose }: BulkAssignWorkIt
   const [error, setError] = useState("");
 
   useEffect(() => {
-    const controller = new AbortController();
     setLoading(true);
-    fetch("/api/work-items?excludeDone=true&limit=100", { signal: controller.signal })
+    fetch("/api/work-items?excludeDone=true&limit=100")
       .then((r) => r.json())
       .then((data) => setWorkItems(data.workItems ?? []))
-      .catch((err) => {
-        if (err?.name !== "AbortError") setError("Failed to load work items");
-      })
+      .catch(() => setError("Failed to load work items"))
       .finally(() => setLoading(false));
-
-    return () => controller.abort();
   }, []);
 
   const filtered = useMemo(() => {
@@ -90,7 +85,7 @@ export function BulkAssignWorkItemModal({ threadIds, onClose }: BulkAssignWorkIt
                 <p className="text-sm font-medium text-slate-800 truncate">{item.title}</p>
                 <p className="text-xs text-slate-500">{item.status} · {item._count?.threads ?? 0} threads</p>
               </div>
-              <Button size="sm" disabled={submitting || loading} onClick={() => assign(item.id)}>
+              <Button size="sm" disabled={submitting} onClick={() => assign(item.id)}>
                 Assign
               </Button>
             </div>

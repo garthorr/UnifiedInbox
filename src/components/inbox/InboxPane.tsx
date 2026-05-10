@@ -403,6 +403,7 @@ export function InboxPane({ threads, labelMap = {}, todoistEnabled = false, acco
       )}
 
 
+
       {showBulkAssignModal && checkedThreads.length > 0 && (
         <BulkAssignWorkItemModal
           threadIds={checkedThreads.map((t) => t.id)}
