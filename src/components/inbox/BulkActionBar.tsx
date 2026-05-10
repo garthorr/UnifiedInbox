@@ -1,6 +1,6 @@
 "use client";
 
-import { Archive, Mail, MailOpen, Plus, X } from "lucide-react";
+import { Archive, Mail, MailOpen, Plus, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface BulkActionBarProps {
@@ -13,6 +13,7 @@ interface BulkActionBarProps {
   onMarkRead: () => void;
   onMarkUnread: () => void;
   onCreateWorkItem: () => void;
+  onDelete: () => void;
 }
 
 export function BulkActionBar({
@@ -25,6 +26,7 @@ export function BulkActionBar({
   onMarkRead,
   onMarkUnread,
   onCreateWorkItem,
+  onDelete,
 }: BulkActionBarProps) {
   return (
     <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 border-b border-blue-100 sticky top-0 z-10">
@@ -79,6 +81,16 @@ export function BulkActionBar({
         >
           <Plus className="h-3.5 w-3.5" />
           Work Item
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 px-2 text-xs gap-1 text-red-500 hover:text-red-700 hover:bg-red-50"
+          onClick={onDelete}
+          title={`Delete ${count} selected thread${count !== 1 ? "s" : ""}`}
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+          Delete
         </Button>
       </div>
 

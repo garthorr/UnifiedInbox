@@ -69,11 +69,22 @@ export function ThreadList({
 }: ThreadListProps) {
   if (threads.length === 0) {
     return (
-      <div
-        className="py-16 text-center text-sm"
-        style={{ color: "var(--ds-muted)" }}
-      >
-        No threads found. Try adjusting your filters or syncing your accounts.
+      <div className="flex flex-col items-center gap-2 py-20 px-6 text-center">
+        <svg
+          className="h-8 w-8 opacity-20"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          style={{ color: "var(--ds-muted)" }}
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+        </svg>
+        <p className="text-sm font-medium" style={{ color: "var(--ds-ink-2)" }}>
+          All clear
+        </p>
+        <p className="text-xs max-w-[240px]" style={{ color: "var(--ds-muted)" }}>
+          No threads match your current filters. Try a different date range or clear the filters to see more.
+        </p>
       </div>
     );
   }

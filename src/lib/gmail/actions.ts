@@ -63,6 +63,28 @@ function buildRaw(fields: {
     .replace(/=+$/, "");
 }
 
+export async function sendEmail(
+  accountId: string,
+  opts: { to: string; subject: string; body: string }
+) {
+  const gmail = await getGmailClient(accountId);
+  const account = await prisma.account.findUniqueOrThrow({
+    where: { id: accountId },
+    select: { email: true, displayName: true },
+  });
+
+  const from = account.displayName
+    ? `${account.displayName} <${account.email}>`
+    : account.email;
+
+  const raw = buildRaw({ from, to: opts.to, subject: opts.subject, body: opts.body });
+
+  await gmail.users.messages.send({
+    userId: "me",
+    requestBody: { raw },
+  });
+}
+
 export async function sendReply(
   accountId: string,
   gmailThreadId: string,

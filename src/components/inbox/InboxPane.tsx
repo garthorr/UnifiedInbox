@@ -4,6 +4,7 @@ import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { ThreadList } from "./ThreadList";
 import { BulkActionBar } from "./BulkActionBar";
 import { EmailViewer } from "./EmailViewer";
+import { ComposeEmail } from "./ComposeEmail";
 import { CreateWorkItemModal } from "@/components/work-items/CreateWorkItemModal";
 import { messageCache } from "@/lib/client-message-cache";
 
@@ -26,18 +27,26 @@ interface Thread {
 
 type LabelInfo = { name: string; color: string | null };
 
+interface Account {
+  id: string;
+  email: string;
+  displayName: string;
+}
+
 interface InboxPaneProps {
   threads: Thread[];
   labelMap?: Record<string, Record<string, LabelInfo>>;
   todoistEnabled?: boolean;
+  accounts?: Account[];
 }
 
-export function InboxPane({ threads, labelMap = {}, todoistEnabled = false }: InboxPaneProps) {
+export function InboxPane({ threads, labelMap = {}, todoistEnabled = false, accounts = [] }: InboxPaneProps) {
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [unreadOverrides, setUnreadOverrides] = useState<Record<string, boolean>>({});
   const [staleIds, setStaleIds] = useState<Set<string>>(new Set());
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
   const [showBulkCreateModal, setShowBulkCreateModal] = useState(false);
+  const [showCompose, setShowCompose] = useState(false);
 
   const lastCheckedIndexRef = useRef<number | null>(null);
 
@@ -126,49 +135,93 @@ export function InboxPane({ threads, labelMap = {}, todoistEnabled = false }: In
   }, []);
 
   const handleArchiveSingle = useCallback(async (id: string) => {
-    await fetch(`/api/threads/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "archive" }),
-    });
-    handleStale(id);
+    handleStale(id); // optimistic — remove immediately
+    try {
+      const res = await fetch(`/api/threads/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "archive" }),
+      });
+      if (!res.ok) throw new Error();
+    } catch {
+      setStaleIds((prev) => { const next = new Set(prev); next.delete(id); return next; });
+    }
   }, []);
 
+  const handleArchiveSingleRef = useRef(handleArchiveSingle);
+  handleArchiveSingleRef.current = handleArchiveSingle;
+
   const handleMarkReadToggle = useCallback(async (id: string, currentlyUnread: boolean) => {
-    await fetch(`/api/threads/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: currentlyUnread ? "markRead" : "markUnread" }),
-    });
-    setUnreadOverrides((prev) => ({ ...prev, [id]: !currentlyUnread }));
+    setUnreadOverrides((prev) => ({ ...prev, [id]: !currentlyUnread })); // optimistic
+    try {
+      const res = await fetch(`/api/threads/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: currentlyUnread ? "markRead" : "markUnread" }),
+      });
+      if (!res.ok) throw new Error();
+    } catch {
+      setUnreadOverrides((prev) => ({ ...prev, [id]: currentlyUnread })); // rollback
+    }
   }, []);
 
   const handleBulkAction = useCallback(
     async (action: "archive" | "trash" | "markRead" | "markUnread") => {
       const ids = [...checkedIds];
       if (!ids.length) return;
+
+      // Optimistic update
+      if (action === "archive" || action === "trash") {
+        setStaleIds((prev) => new Set([...prev, ...ids]));
+        setSelectedThreadId((prev) => (prev && ids.includes(prev) ? null : prev));
+        setCheckedIds(new Set());
+      } else {
+        const isUnread = action === "markUnread";
+        setUnreadOverrides((prev) => {
+          const next = { ...prev };
+          ids.forEach((id) => { next[id] = isUnread; });
+          return next;
+        });
+        setCheckedIds(new Set());
+      }
+
       const res = await fetch("/api/threads/bulk", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ threadIds: ids, action }),
       });
-      if (!res.ok && res.status !== 207) return;
+      if (!res.ok && res.status !== 207) {
+        // Full failure — rollback all
+        if (action === "archive" || action === "trash") {
+          setStaleIds((prev) => { const next = new Set(prev); ids.forEach((id) => next.delete(id)); return next; });
+          setCheckedIds(new Set(ids));
+        } else {
+          const wasUnread = action === "markUnread"; // reverse: undo what we set
+          setUnreadOverrides((prev) => {
+            const next = { ...prev };
+            ids.forEach((id) => { next[id] = !wasUnread; });
+            return next;
+          });
+          setCheckedIds(new Set(ids));
+        }
+        return;
+      }
 
       const { failedIds = [] }: { updated: number; failedIds: string[] } = await res.json();
-      const successIds = ids.filter((id) => !failedIds.includes(id));
-
-      if (action === "archive" || action === "trash") {
-        setStaleIds((prev) => new Set([...prev, ...successIds]));
-        setSelectedThreadId((prev) => (prev && successIds.includes(prev) ? null : prev));
-      } else {
-        const isUnread = action === "markUnread";
-        setUnreadOverrides((prev) => {
-          const next = { ...prev };
-          successIds.forEach((id) => { next[id] = isUnread; });
-          return next;
-        });
+      if (failedIds.length > 0) {
+        // Partial failure — rollback only the ones that failed
+        if (action === "archive" || action === "trash") {
+          setStaleIds((prev) => { const next = new Set(prev); failedIds.forEach((id) => next.delete(id)); return next; });
+        } else {
+          const wasUnread = action === "markUnread";
+          setUnreadOverrides((prev) => {
+            const next = { ...prev };
+            failedIds.forEach((id) => { next[id] = !wasUnread; });
+            return next;
+          });
+        }
+        setCheckedIds(new Set(failedIds));
       }
-      setCheckedIds(new Set(failedIds)); // keep failed ones checked so user can retry
     },
     [checkedIds]
   );
@@ -197,6 +250,14 @@ export function InboxPane({ threads, labelMap = {}, todoistEnabled = false }: In
         if (prev) setSelectedThreadId(prev.id);
       } else if (e.key === "Escape") {
         setSelectedThreadId(null);
+      } else if (e.key === "e" && currentId) {
+        e.preventDefault();
+        handleArchiveSingleRef.current(currentId);
+      } else if (e.key === "Enter" && !currentId) {
+        const first = threads[0];
+        if (first) setSelectedThreadId(first.id);
+      } else if (e.key === "c" || e.key === "C") {
+        setShowCompose(true);
       }
     }
     window.addEventListener("keydown", onKey);
@@ -204,14 +265,17 @@ export function InboxPane({ threads, labelMap = {}, todoistEnabled = false }: In
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Compose accounts: prefer prop, fall back to unique accounts from threads
+  const composeAccounts = accounts.length > 0
+    ? accounts
+    : Array.from(
+        new Map(threads.map((t) => [t.account.id, t.account])).values()
+      );
+
   return (
     <div className="flex flex-1 overflow-hidden h-full">
-      <div
-        className={`flex-shrink-0 overflow-y-auto border-r flex flex-col ${
-          selectedThreadId ? "w-[380px]" : "w-full"
-        }`}
-      >
-        {anyChecked && (
+      <div className="flex-shrink-0 w-[380px] overflow-y-auto border-r flex flex-col" style={{ borderColor: "var(--ds-line)" }}>
+        {anyChecked ? (
           <BulkActionBar
             count={checkedIds.size}
             allCount={threadsWithOverrides.length}
@@ -222,7 +286,21 @@ export function InboxPane({ threads, labelMap = {}, todoistEnabled = false }: In
             onMarkRead={() => handleBulkAction("markRead")}
             onMarkUnread={() => handleBulkAction("markUnread")}
             onCreateWorkItem={() => setShowBulkCreateModal(true)}
+            onDelete={() => handleBulkAction("trash")}
           />
+        ) : (
+          <div className="flex items-center justify-end px-3 py-1.5 border-b">
+            <button
+              onClick={() => setShowCompose(true)}
+              className="flex items-center gap-1.5 text-xs font-medium text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-md px-2.5 py-1 transition-colors"
+              title="Compose new email (C)"
+            >
+              <svg className="h-3.5 w-3.5" viewBox="0 0 16 16" fill="currentColor">
+                <path d="M11.013 1.427a1.75 1.75 0 0 1 2.474 0l1.086 1.086a1.75 1.75 0 0 1 0 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 0 1-.927-.928l.929-3.25c.081-.286.235-.547.445-.758l8.61-8.61zm.176 4.823L9.75 4.81l-6.286 6.287a.253.253 0 0 0-.064.108l-.558 1.953 1.953-.558a.253.253 0 0 0 .108-.064Zm1.238-3.763a.25.25 0 0 0-.354 0L10.811 3.75l1.439 1.44 1.263-1.263a.25.25 0 0 0 0-.354Z" />
+              </svg>
+              Compose
+            </button>
+          </div>
         )}
         <ThreadList
           threads={threadsWithOverrides}
@@ -238,8 +316,8 @@ export function InboxPane({ threads, labelMap = {}, todoistEnabled = false }: In
         />
       </div>
 
-      {selectedThread && (
-        <div className="flex-1 overflow-hidden">
+      <div className="flex-1 overflow-hidden">
+        {selectedThread ? (
           <EmailViewer
             threadId={selectedThread.id}
             gmailThreadId={selectedThread.gmailThreadId}
@@ -252,8 +330,26 @@ export function InboxPane({ threads, labelMap = {}, todoistEnabled = false }: In
               setUnreadOverrides((prev) => ({ ...prev, [selectedThread.id]: v }))
             }
           />
-        </div>
-      )}
+        ) : (
+          <div className="flex h-full flex-col items-center justify-center gap-2 select-none">
+            <svg
+              className="h-8 w-8 opacity-15"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              style={{ color: "var(--ds-ink)" }}
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+            </svg>
+            <p className="text-sm" style={{ color: "var(--ds-muted)" }}>
+              Select a thread to read
+            </p>
+            <p className="text-xs" style={{ color: "var(--ds-muted)", opacity: 0.6 }}>
+              Use <kbd className="font-mono bg-black/5 px-1 py-0.5 rounded text-[11px]">j</kbd> / <kbd className="font-mono bg-black/5 px-1 py-0.5 rounded text-[11px]">k</kbd> to navigate
+            </p>
+          </div>
+        )}
+      </div>
 
       {showBulkCreateModal && checkedThreads.length > 0 && (
         <CreateWorkItemModal
@@ -263,6 +359,14 @@ export function InboxPane({ threads, labelMap = {}, todoistEnabled = false }: In
             setShowBulkCreateModal(false);
             setCheckedIds(new Set());
           }}
+        />
+      )}
+
+      {showCompose && composeAccounts.length > 0 && (
+        <ComposeEmail
+          accounts={composeAccounts}
+          defaultAccountId={composeAccounts[0].id}
+          onClose={() => setShowCompose(false)}
         />
       )}
     </div>
