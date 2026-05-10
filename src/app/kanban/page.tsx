@@ -47,7 +47,7 @@ export default async function KanbanPage() {
       <div className="flex flex-col h-full">
         {/* Header */}
         <div
-          className="flex-shrink-0 border-b px-6 py-3 flex items-center gap-3"
+          className="flex-shrink-0 border-b px-4 py-3 flex items-center gap-3 flex-wrap"
           style={{ background: "var(--ds-panel)", borderColor: "var(--ds-line)" }}
         >
           <h1

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { Inbox, LayoutDashboard, RefreshCw, Settings, Sunrise } from "lucide-react";
+import { Inbox, LayoutDashboard, RefreshCw, Settings, Sunrise, X } from "lucide-react";
 
 interface Domain {
   id: string;
@@ -21,9 +21,10 @@ interface DomainSidebarProps {
   domains: Domain[];
   counts: WorkItemCounts;
   todayCount: number;
+  onClose?: () => void;
 }
 
-export function DomainSidebar({ domains, counts, todayCount }: DomainSidebarProps) {
+export function DomainSidebar({ domains, counts, todayCount, onClose }: DomainSidebarProps) {
   const pathname = usePathname();
   const totalActive = counts.active + counts.waiting + counts.delegated;
 
@@ -67,7 +68,18 @@ export function DomainSidebar({ domains, counts, todayCount }: DomainSidebarProp
           Unified Inbox
         </span>
         <div className="ml-auto flex items-center gap-1">
-          <span className="w-1.5 h-1.5 rounded-full bg-ds-accent" />
+          {onClose ? (
+            <button
+              onClick={onClose}
+              className="rounded-md p-1 transition-colors hover:bg-black/5"
+              style={{ color: "var(--ds-muted)" }}
+              aria-label="Close navigation"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          ) : (
+            <span className="w-1.5 h-1.5 rounded-full bg-ds-accent" />
+          )}
         </div>
       </div>
 

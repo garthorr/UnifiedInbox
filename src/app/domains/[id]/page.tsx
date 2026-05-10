@@ -84,7 +84,7 @@ export default async function DomainPage({ params, searchParams }: PageProps) {
   return (
     <AppShell>
       <div className="flex flex-col h-full">
-        <div className="border-b bg-white px-6 py-3 flex items-center gap-3">
+        <div className="border-b bg-white px-4 py-3 flex items-center gap-3 flex-wrap">
           <Button asChild variant="ghost" size="sm" className="h-7 gap-1 text-xs">
             <Link href="/">
               <ArrowLeft className="h-3 w-3" />

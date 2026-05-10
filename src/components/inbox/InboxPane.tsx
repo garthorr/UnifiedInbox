@@ -1,12 +1,14 @@
 "use client";
 
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
+import { ChevronLeft } from "lucide-react";
 import { ThreadList } from "./ThreadList";
 import { BulkActionBar } from "./BulkActionBar";
 import { EmailViewer } from "./EmailViewer";
 import { ComposeEmail } from "./ComposeEmail";
 import { CreateWorkItemModal } from "@/components/work-items/CreateWorkItemModal";
 import { messageCache } from "@/lib/client-message-cache";
+import { cn } from "@/lib/utils";
 
 interface Thread {
   id: string;
@@ -274,7 +276,15 @@ export function InboxPane({ threads, labelMap = {}, todoistEnabled = false, acco
 
   return (
     <div className="flex flex-1 overflow-hidden h-full">
-      <div className="flex-shrink-0 w-[380px] overflow-y-auto border-r flex flex-col" style={{ borderColor: "var(--ds-line)" }}>
+      {/* Thread list — full-width on mobile, fixed 380px on desktop */}
+      <div
+        className={cn(
+          "flex-shrink-0 overflow-y-auto border-r flex flex-col",
+          "md:w-[380px]",
+          selectedThreadId ? "hidden md:flex" : "w-full"
+        )}
+        style={{ borderColor: "var(--ds-line)" }}
+      >
         {anyChecked ? (
           <BulkActionBar
             count={checkedIds.size}
@@ -316,20 +326,48 @@ export function InboxPane({ threads, labelMap = {}, todoistEnabled = false, acco
         />
       </div>
 
-      <div className="flex-1 overflow-hidden">
+      {/* Reading pane — hidden on mobile when nothing selected, full-screen when selected */}
+      <div
+        className={cn(
+          "overflow-hidden flex flex-col",
+          "md:flex-1",
+          selectedThreadId ? "flex-1" : "hidden md:flex md:flex-1"
+        )}
+      >
         {selectedThread ? (
-          <EmailViewer
-            threadId={selectedThread.id}
-            gmailThreadId={selectedThread.gmailThreadId}
-            subject={selectedThread.subject}
-            snippet={selectedThread.snippet ?? ""}
-            isUnread={unreadOverrides[selectedThread.id] ?? selectedThread.isUnread}
-            todoistEnabled={todoistEnabled}
-            onStale={() => handleStale(selectedThread.id)}
-            onUnreadChange={(v) =>
-              setUnreadOverrides((prev) => ({ ...prev, [selectedThread.id]: v }))
-            }
-          />
+          <>
+            {/* Mobile back button */}
+            <div
+              className="md:hidden flex-shrink-0 flex items-center gap-2 px-3 py-2 border-b"
+              style={{ borderColor: "var(--ds-line)", background: "var(--ds-panel)" }}
+            >
+              <button
+                onClick={() => setSelectedThreadId(null)}
+                className="flex items-center gap-1 text-sm font-medium"
+                style={{ color: "var(--ds-accent)" }}
+              >
+                <ChevronLeft className="h-4 w-4" />
+                Inbox
+              </button>
+              <span className="ml-2 text-xs truncate" style={{ color: "var(--ds-muted)" }}>
+                {selectedThread.subject}
+              </span>
+            </div>
+            <div className="flex-1 overflow-hidden">
+              <EmailViewer
+                threadId={selectedThread.id}
+                gmailThreadId={selectedThread.gmailThreadId}
+                subject={selectedThread.subject}
+                snippet={selectedThread.snippet ?? ""}
+                isUnread={unreadOverrides[selectedThread.id] ?? selectedThread.isUnread}
+                todoistEnabled={todoistEnabled}
+                onStale={() => handleStale(selectedThread.id)}
+                onUnreadChange={(v) =>
+                  setUnreadOverrides((prev) => ({ ...prev, [selectedThread.id]: v }))
+                }
+              />
+            </div>
+          </>
         ) : (
           <div className="flex h-full flex-col items-center justify-center gap-2 select-none">
             <svg
