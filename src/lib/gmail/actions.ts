@@ -1,5 +1,5 @@
 import { getGmailClient } from "./client";
-import { prisma } from "@/lib/db";
+import { prisma } from "../db";
 
 // ─── Thread-level actions ────────────────────────────────────────────────────
 

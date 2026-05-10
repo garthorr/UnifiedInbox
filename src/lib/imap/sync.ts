@@ -1,7 +1,7 @@
 import { ImapFlow } from "imapflow";
-import { prisma } from "@/lib/db";
-import { decrypt } from "@/lib/encrypt";
-import { applyRulesToThread } from "@/lib/rules";
+import { prisma } from "../db";
+import { decrypt } from "../encrypt";
+import { applyRulesToThread } from "../rules";
 
 const INITIAL_SYNC_DAYS = 90;
 const INITIAL_SYNC_MAX = 500;

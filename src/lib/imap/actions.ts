@@ -1,6 +1,6 @@
 import { withImap } from "./pool";
-import { prisma } from "@/lib/db";
-import { decrypt } from "@/lib/encrypt";
+import { prisma } from "../db";
+import { decrypt } from "../encrypt";
 import nodemailer from "nodemailer";
 import type { ImapFlow } from "imapflow";
 

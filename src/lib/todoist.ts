@@ -134,7 +134,7 @@ export function isConfigured(): boolean {
 
 // ─── Sync helper (used by worker + /api/todoist/sync) ─────────────────────────
 
-import { prisma } from "@/lib/db";
+import { prisma } from "./db";
 
 export interface TodoistSyncResult {
   synced: number;
