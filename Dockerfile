@@ -22,10 +22,15 @@ ENV NODE_ENV=production
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
-# Prisma engine binaries and CLI are not bundled into .next/standalone automatically
+# Prisma CLI and all its dependencies (not bundled into .next/standalone)
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma/client ./node_modules/@prisma/client
 COPY --from=builder /app/node_modules/@prisma/engines ./node_modules/@prisma/engines
+COPY --from=builder /app/node_modules/@prisma/engines-version ./node_modules/@prisma/engines-version
+COPY --from=builder /app/node_modules/@prisma/get-platform ./node_modules/@prisma/get-platform
+COPY --from=builder /app/node_modules/@prisma/debug ./node_modules/@prisma/debug
+COPY --from=builder /app/node_modules/@prisma/fetch-engine ./node_modules/@prisma/fetch-engine
+COPY --from=builder /app/node_modules/@prisma/config ./node_modules/@prisma/config
 COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
 COPY --from=builder /app/prisma ./prisma
 EXPOSE 3000
