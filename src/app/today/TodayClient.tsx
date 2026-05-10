@@ -6,8 +6,8 @@ import { EmailViewer } from "@/components/inbox/EmailViewer";
 import { DomainBadge, UnassignedBadge } from "@/components/shared/DomainBadge";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { CreateWorkItemModal } from "@/components/work-items/CreateWorkItemModal";
-import { relativeTime, parseEmailDisplay, primarySender } from "@/lib/utils";
-import { ChevronRight, Paperclip } from "lucide-react";
+import { relativeTime, parseEmailDisplay, primarySender, cn } from "@/lib/utils";
+import { ChevronLeft, ChevronRight, Paperclip } from "lucide-react";
 import type { WorkItemStatus } from "@prisma/client";
 
 interface TriageThread {
@@ -64,6 +64,135 @@ export function TodayClient({ triageThreads, activeItems, todoistEnabled }: Toda
     (wi) => !wi.dueDate || new Date(wi.dueDate) >= new Date()
   );
 
+  // Triage thread list — shared between mobile and desktop renderings
+  function TriageList() {
+    if (visibleThreads.length === 0) {
+      return (
+        <div className="flex-1 flex items-center justify-center py-10">
+          <p className="text-sm text-slate-400">All caught up ✓</p>
+        </div>
+      );
+    }
+    return (
+      <>
+        {visibleThreads.map((t) => {
+          const isSelected = t.id === selectedThreadId;
+          const isUnread = unreadOverrides[t.id] ?? t.isUnread;
+          const sender = parseEmailDisplay(primarySender(t.participantAddresses, t.account.email));
+          return (
+            <div
+              key={t.id}
+              className={`flex items-start gap-2.5 border-b pl-2.5 pr-3 py-2.5 cursor-pointer transition-colors border-l-[3px] ${
+                isSelected ? "bg-blue-50" : "hover:bg-slate-50"
+              }`}
+              style={{ borderLeftColor: isSelected ? "#3b82f6" : t.account.color }}
+              onClick={() => setSelectedThreadId(isSelected ? null : t.id)}
+            >
+              <div className="mt-1.5 flex-shrink-0">
+                {isUnread ? (
+                  <div className="h-2 w-2 rounded-full bg-blue-500" />
+                ) : (
+                  <div className="h-2 w-2" />
+                )}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-1 mb-0.5">
+                  <p className={`text-xs truncate ${isUnread ? "font-semibold text-slate-900" : "text-slate-700"}`}>
+                    {sender.name || sender.email}
+                  </p>
+                  <span className="text-xs text-slate-400 flex-shrink-0">{relativeTime(t.lastMessageAt)}</span>
+                </div>
+                <p className="text-xs text-slate-700 truncate font-medium">{t.subject}</p>
+                <p className="text-xs text-slate-400 truncate mt-0.5">{t.snippet}</p>
+                <div className="flex items-center gap-1.5 mt-1.5">
+                  {t.domain ? (
+                    <DomainBadge name={t.domain.name} color={t.domain.color} />
+                  ) : (
+                    <UnassignedBadge />
+                  )}
+                  {t.hasAttachments && <Paperclip className="h-3 w-3 text-slate-400" />}
+                  <button
+                    className="ml-auto text-xs text-blue-600 hover:underline"
+                    onClick={(e) => { e.stopPropagation(); setCreatingWorkItem(t); }}
+                  >
+                    + Task
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </>
+    );
+  }
+
+  // Work items panel — shared between mobile and desktop
+  function WorkItemsPanel() {
+    if (activeItems.length === 0) {
+      return (
+        <div className="flex items-center justify-center h-40">
+          <p className="text-sm text-slate-400">No active work items</p>
+        </div>
+      );
+    }
+    return (
+      <div className="px-5 py-4 space-y-5">
+        {overdue.length > 0 && (
+          <section>
+            <p className="text-xs font-semibold uppercase tracking-wide text-red-500 mb-2">
+              Overdue ({overdue.length})
+            </p>
+            <WorkItemList items={overdue} />
+          </section>
+        )}
+        <section>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">
+            Active & Waiting ({upcoming.length})
+          </p>
+          <WorkItemList items={upcoming} />
+        </section>
+      </div>
+    );
+  }
+
+  // Email viewer with back button — shown when a thread is selected
+  function ViewerPanel({ mobile }: { mobile?: boolean }) {
+    if (!selectedThread) return null;
+    return (
+      <div className="flex-1 overflow-hidden flex flex-col">
+        <div className="flex-shrink-0 border-b px-4 py-2 flex items-center gap-2 bg-white">
+          <button
+            className={cn(
+              "flex items-center gap-1 font-medium",
+              mobile ? "text-sm text-blue-600" : "text-xs text-slate-500 hover:text-slate-800"
+            )}
+            onClick={() => setSelectedThreadId(null)}
+          >
+            {mobile && <ChevronLeft className="h-4 w-4" />}
+            {mobile ? "Today" : "← Back"}
+          </button>
+          <span className="text-xs text-slate-300">|</span>
+          <p className="text-xs text-slate-600 truncate">{selectedThread.subject}</p>
+        </div>
+        <div className="flex-1 overflow-hidden">
+          <EmailViewer
+            threadId={selectedThread.id}
+            gmailThreadId={selectedThread.gmailThreadId}
+            subject={selectedThread.subject}
+            isUnread={unreadOverrides[selectedThread.id] ?? selectedThread.isUnread}
+            onStale={() => {
+              setStaleIds((p) => new Set([...p, selectedThread.id]));
+              setSelectedThreadId(null);
+            }}
+            onUnreadChange={(v) =>
+              setUnreadOverrides((p) => ({ ...p, [selectedThread.id]: v }))
+            }
+          />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Page header */}
@@ -74,129 +203,40 @@ export function TodayClient({ triageThreads, activeItems, todoistEnabled }: Toda
         </span>
       </div>
 
-      <div className="flex flex-1 overflow-hidden">
-        {/* Left: needs triage */}
+      {/* ── Desktop layout (md+): side-by-side panels ── */}
+      <div className="hidden md:flex flex-1 overflow-hidden">
         <div className="w-[340px] flex-shrink-0 border-r flex flex-col overflow-hidden">
           <div className="flex-shrink-0 px-4 py-2.5 border-b bg-slate-50">
-            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
-              Needs triage
-            </p>
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Needs triage</p>
             <p className="text-xs text-slate-400 mt-0.5">Unread · no work item · last 7 days</p>
           </div>
-
-          {visibleThreads.length === 0 ? (
-            <div className="flex-1 flex items-center justify-center">
-              <p className="text-sm text-slate-400">All caught up ✓</p>
-            </div>
-          ) : (
-            <div className="flex-1 overflow-y-auto">
-              {visibleThreads.map((t) => {
-                const isSelected = t.id === selectedThreadId;
-                const isUnread = unreadOverrides[t.id] ?? t.isUnread;
-                const sender = parseEmailDisplay(primarySender(t.participantAddresses, t.account.email));
-                return (
-                  <div
-                    key={t.id}
-                    className={`flex items-start gap-2.5 border-b pl-2.5 pr-3 py-2.5 cursor-pointer transition-colors border-l-[3px] ${
-                      isSelected ? "bg-blue-50" : "hover:bg-slate-50"
-                    }`}
-                    style={{ borderLeftColor: isSelected ? "#3b82f6" : t.account.color }}
-                    onClick={() => setSelectedThreadId(isSelected ? null : t.id)}
-                  >
-                    <div className="mt-1.5 flex-shrink-0">
-                      {isUnread ? (
-                        <div className="h-2 w-2 rounded-full bg-blue-500" />
-                      ) : (
-                        <div className="h-2 w-2" />
-                      )}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center justify-between gap-1 mb-0.5">
-                        <p className={`text-xs truncate ${isUnread ? "font-semibold text-slate-900" : "text-slate-700"}`}>
-                          {sender.name || sender.email}
-                        </p>
-                        <span className="text-xs text-slate-400 flex-shrink-0">{relativeTime(t.lastMessageAt)}</span>
-                      </div>
-                      <p className="text-xs text-slate-700 truncate font-medium">{t.subject}</p>
-                      <p className="text-xs text-slate-400 truncate mt-0.5">{t.snippet}</p>
-                      <div className="flex items-center gap-1.5 mt-1.5">
-                        {t.domain ? (
-                          <DomainBadge name={t.domain.name} color={t.domain.color} />
-                        ) : (
-                          <UnassignedBadge />
-                        )}
-                        {t.hasAttachments && <Paperclip className="h-3 w-3 text-slate-400" />}
-                        <button
-                          className="ml-auto text-xs text-blue-600 hover:underline"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setCreatingWorkItem(t);
-                          }}
-                        >
-                          + Task
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* Right: work items OR email viewer */}
-        {selectedThread ? (
-          <div className="flex-1 overflow-hidden flex flex-col">
-            <div className="flex-shrink-0 border-b px-4 py-2 flex items-center gap-2 bg-white">
-              <button
-                className="text-xs text-slate-500 hover:text-slate-800"
-                onClick={() => setSelectedThreadId(null)}
-              >
-                ← Back
-              </button>
-              <span className="text-xs text-slate-300">|</span>
-              <p className="text-xs text-slate-600 truncate">{selectedThread.subject}</p>
-            </div>
-            <div className="flex-1 overflow-hidden">
-              <EmailViewer
-                threadId={selectedThread.id}
-                gmailThreadId={selectedThread.gmailThreadId}
-                subject={selectedThread.subject}
-                isUnread={unreadOverrides[selectedThread.id] ?? selectedThread.isUnread}
-                onStale={() => {
-                  setStaleIds((p) => new Set([...p, selectedThread.id]));
-                  setSelectedThreadId(null);
-                }}
-                onUnreadChange={(v) =>
-                  setUnreadOverrides((p) => ({ ...p, [selectedThread.id]: v }))
-                }
-              />
-            </div>
+          <div className="flex-1 overflow-y-auto">
+            <TriageList />
           </div>
+        </div>
+        {selectedThread ? <ViewerPanel /> : (
+          <div className="flex-1 overflow-y-auto">
+            <WorkItemsPanel />
+          </div>
+        )}
+      </div>
+
+      {/* ── Mobile layout: stacked or full-screen viewer ── */}
+      <div className="md:hidden flex-1 overflow-hidden flex flex-col">
+        {selectedThread ? (
+          <ViewerPanel mobile />
         ) : (
           <div className="flex-1 overflow-y-auto">
-            {activeItems.length === 0 ? (
-              <div className="flex items-center justify-center h-40">
-                <p className="text-sm text-slate-400">No active work items</p>
+            {/* Triage section */}
+            <div className="border-b">
+              <div className="flex-shrink-0 px-4 py-2.5 border-b bg-slate-50">
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Needs triage</p>
+                <p className="text-xs text-slate-400 mt-0.5">Unread · no work item · last 7 days</p>
               </div>
-            ) : (
-              <div className="px-5 py-4 space-y-5">
-                {overdue.length > 0 && (
-                  <section>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-red-500 mb-2">
-                      Overdue ({overdue.length})
-                    </p>
-                    <WorkItemList items={overdue} />
-                  </section>
-                )}
-                <section>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">
-                    Active & Waiting ({upcoming.length})
-                  </p>
-                  <WorkItemList items={upcoming} />
-                </section>
-              </div>
-            )}
+              <TriageList />
+            </div>
+            {/* Work items section */}
+            <WorkItemsPanel />
           </div>
         )}
       </div>
