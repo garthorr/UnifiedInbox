@@ -1,5 +1,5 @@
-import { prisma } from "@/lib/db";
-import { syncAccount } from "@/lib/gmail/sync";
+import { prisma } from "./db";
+import { syncAccount } from "./gmail/sync";
 
 function isPrismaUniqueError(err: unknown): boolean {
   return (

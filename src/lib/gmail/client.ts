@@ -1,8 +1,8 @@
 import { google } from "googleapis";
 import type { gmail_v1 } from "googleapis";
 import { createOAuth2Client } from "./oauth";
-import { decrypt, encrypt } from "@/lib/encrypt";
-import { prisma } from "@/lib/db";
+import { decrypt, encrypt } from "../encrypt";
+import { prisma } from "../db";
 
 /**
  * Build an authenticated Gmail client for a given account ID.

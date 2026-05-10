@@ -1,7 +1,7 @@
 import type { gmail_v1 } from "googleapis";
 import { getGmailClient } from "./client";
-import { prisma } from "@/lib/db";
-import { applyRulesToThread } from "@/lib/rules";
+import { prisma } from "../db";
+import { applyRulesToThread } from "../rules";
 
 const INITIAL_SYNC_DAYS = 90;
 const INITIAL_SYNC_MAX_THREADS = 500;

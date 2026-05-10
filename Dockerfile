@@ -15,7 +15,7 @@ COPY package*.json ./
 RUN npm ci
 COPY . .
 RUN npx prisma generate
-RUN npm run build && npm run worker:build && npx --yes tsc-alias -p worker/tsconfig.json
+RUN npm run build && npm run worker:build
 
 FROM base AS production
 ENV NODE_ENV=production

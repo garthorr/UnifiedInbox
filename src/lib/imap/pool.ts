@@ -13,8 +13,8 @@
  */
 
 import { ImapFlow } from "imapflow";
-import { prisma } from "@/lib/db";
-import { decrypt } from "@/lib/encrypt";
+import { prisma } from "../db";
+import { decrypt } from "../encrypt";
 
 const IDLE_MS = 5 * 60 * 1000; // close idle connections after 5 minutes
 
