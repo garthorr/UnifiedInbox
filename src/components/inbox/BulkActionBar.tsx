@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 
 interface BulkActionBarProps {
   count: number;
-  allCount: number;
   allSelected: boolean;
   onSelectAll: () => void;
   onClearAll: () => void;
@@ -13,12 +12,12 @@ interface BulkActionBarProps {
   onMarkRead: () => void;
   onMarkUnread: () => void;
   onCreateWorkItem: () => void;
+  onAssignToWorkItem: () => void;
   onDelete: () => void;
 }
 
 export function BulkActionBar({
   count,
-  allCount,
   allSelected,
   onSelectAll,
   onClearAll,
@@ -26,6 +25,7 @@ export function BulkActionBar({
   onMarkRead,
   onMarkUnread,
   onCreateWorkItem,
+  onAssignToWorkItem,
   onDelete,
 }: BulkActionBarProps) {
   return (
@@ -81,6 +81,15 @@ export function BulkActionBar({
         >
           <Plus className="h-3.5 w-3.5" />
           Work Item
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 px-2 text-xs gap-1 text-slate-600 hover:text-slate-900"
+          onClick={onAssignToWorkItem}
+          title={`Assign ${count} thread${count !== 1 ? "s" : ""} to an existing work item`}
+        >
+          Assign
         </Button>
         <Button
           variant="ghost"
