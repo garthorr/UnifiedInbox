@@ -290,7 +290,6 @@ export function InboxPane({ threads, labelMap = {}, todoistEnabled = false, acco
         {anyChecked ? (
           <BulkActionBar
             count={checkedIds.size}
-            allCount={threadsWithOverrides.length}
             allSelected={allSelected}
             onSelectAll={() => setCheckedIds(new Set(threadsWithOverrides.map((t) => t.id)))}
             onClearAll={() => setCheckedIds(new Set())}

@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 
 interface BulkActionBarProps {
   count: number;
-  allCount: number;
   allSelected: boolean;
   onSelectAll: () => void;
   onClearAll: () => void;
@@ -19,7 +18,6 @@ interface BulkActionBarProps {
 
 export function BulkActionBar({
   count,
-  allCount,
   allSelected,
   onSelectAll,
   onClearAll,
