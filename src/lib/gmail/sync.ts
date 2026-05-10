@@ -455,7 +455,7 @@ export async function syncAccount(accountId: string): Promise<void> {
   try {
     if (account.accountType === "IMAP") {
       const { initialSync: imapInitial, incrementalSync: imapIncremental } =
-        await import("@/lib/imap/sync");
+        await import("../imap/sync");
       const isFirstSync = !account.historyId || account.historyId === "uid:0";
       if (isFirstSync) {
         await imapInitial(accountId);
