@@ -9,7 +9,10 @@ import { ComposeEmail } from "./ComposeEmail";
 import { CreateWorkItemModal } from "@/components/work-items/CreateWorkItemModal";
 import { BulkAssignWorkItemModal } from "@/components/work-items/BulkAssignWorkItemModal";
 import { messageCache } from "@/lib/client-message-cache";
+import { toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
+
+const UNDO_DELAY_MS = 4000;
 
 interface Thread {
   id: string;
@@ -138,22 +141,59 @@ export function InboxPane({ threads, labelMap = {}, todoistEnabled = false, acco
     lastCheckedIndexRef.current = index;
   }, []);
 
-  const handleArchiveSingle = useCallback(async (id: string) => {
-    handleStale(id); // optimistic — remove immediately
-    try {
-      const res = await fetch(`/api/threads/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "archive" }),
+  // Delayed-commit pattern: optimistically remove, then send the API call after
+  // UNDO_DELAY_MS. If the user clicks Undo, cancel the timer and restore. If
+  // they refresh during the window, optimistic state is lost client-side and
+  // the next sync re-imports the thread; acceptable for a 4s window.
+  const handleDelayedSingle = useCallback(
+    (id: string, action: "archive" | "trash") => {
+      handleStale(id);
+      let cancelled = false;
+
+      const commit = async () => {
+        if (cancelled) return;
+        try {
+          const res = await fetch(`/api/threads/${id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action }),
+            keepalive: true,
+          });
+          if (!res.ok) throw new Error();
+        } catch {
+          setStaleIds((prev) => { const next = new Set(prev); next.delete(id); return next; });
+          toast({
+            message: action === "archive" ? "Couldn't archive — restored" : "Couldn't delete — restored",
+            variant: "error",
+          });
+        }
+      };
+
+      const timer = setTimeout(commit, UNDO_DELAY_MS);
+
+      toast({
+        message: action === "archive" ? "Archived" : "Moved to Trash",
+        duration: UNDO_DELAY_MS,
+        action: {
+          label: "Undo",
+          onClick: () => {
+            cancelled = true;
+            clearTimeout(timer);
+            setStaleIds((prev) => { const next = new Set(prev); next.delete(id); return next; });
+          },
+        },
       });
-      if (!res.ok) throw new Error();
-    } catch {
-      setStaleIds((prev) => { const next = new Set(prev); next.delete(id); return next; });
-    }
-  }, []);
+    },
+    []
+  );
+
+  const handleArchiveSingle = useCallback((id: string) => handleDelayedSingle(id, "archive"), [handleDelayedSingle]);
+  const handleTrashSingle = useCallback((id: string) => handleDelayedSingle(id, "trash"), [handleDelayedSingle]);
 
   const handleArchiveSingleRef = useRef(handleArchiveSingle);
   handleArchiveSingleRef.current = handleArchiveSingle;
+  const handleTrashSingleRef = useRef(handleTrashSingle);
+  handleTrashSingleRef.current = handleTrashSingle;
 
   const handleMarkReadToggle = useCallback(async (id: string, currentlyUnread: boolean) => {
     setUnreadOverrides((prev) => ({ ...prev, [id]: !currentlyUnread })); // optimistic
@@ -169,51 +209,32 @@ export function InboxPane({ threads, labelMap = {}, todoistEnabled = false, acco
     }
   }, []);
 
-  const handleBulkAction = useCallback(
-    async (action: "archive" | "trash" | "markRead" | "markUnread") => {
-      const ids = [...checkedIds];
-      if (!ids.length) return;
-
-      // Optimistic update
-      if (action === "archive" || action === "trash") {
-        setStaleIds((prev) => new Set([...prev, ...ids]));
-        setSelectedThreadId((prev) => (prev && ids.includes(prev) ? null : prev));
-        setCheckedIds(new Set());
-      } else {
-        const isUnread = action === "markUnread";
-        setUnreadOverrides((prev) => {
-          const next = { ...prev };
-          ids.forEach((id) => { next[id] = isUnread; });
-          return next;
-        });
-        setCheckedIds(new Set());
-      }
-
+  const commitBulk = useCallback(
+    async (ids: string[], action: "archive" | "trash" | "markRead" | "markUnread") => {
       const res = await fetch("/api/threads/bulk", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ threadIds: ids, action }),
+        keepalive: true,
       });
       if (!res.ok && res.status !== 207) {
         // Full failure — rollback all
         if (action === "archive" || action === "trash") {
           setStaleIds((prev) => { const next = new Set(prev); ids.forEach((id) => next.delete(id)); return next; });
-          setCheckedIds(new Set(ids));
         } else {
-          const wasUnread = action === "markUnread"; // reverse: undo what we set
+          const wasUnread = action === "markUnread";
           setUnreadOverrides((prev) => {
             const next = { ...prev };
             ids.forEach((id) => { next[id] = !wasUnread; });
             return next;
           });
-          setCheckedIds(new Set(ids));
         }
+        toast({ message: `Couldn't ${action} ${ids.length} thread${ids.length === 1 ? "" : "s"}`, variant: "error" });
         return;
       }
 
       const { failedIds = [] }: { updated: number; failedIds: string[] } = await res.json();
       if (failedIds.length > 0) {
-        // Partial failure — rollback only the ones that failed
         if (action === "archive" || action === "trash") {
           setStaleIds((prev) => { const next = new Set(prev); failedIds.forEach((id) => next.delete(id)); return next; });
         } else {
@@ -224,10 +245,54 @@ export function InboxPane({ threads, labelMap = {}, todoistEnabled = false, acco
             return next;
           });
         }
-        setCheckedIds(new Set(failedIds));
+        toast({
+          message: `${failedIds.length} of ${ids.length} thread${ids.length === 1 ? "" : "s"} failed`,
+          variant: "error",
+        });
       }
     },
-    [checkedIds]
+    []
+  );
+
+  const handleBulkAction = useCallback(
+    async (action: "archive" | "trash" | "markRead" | "markUnread") => {
+      const ids = [...checkedIds];
+      if (!ids.length) return;
+
+      // Optimistic update + clear selection
+      if (action === "archive" || action === "trash") {
+        setStaleIds((prev) => new Set([...prev, ...ids]));
+        setSelectedThreadId((prev) => (prev && ids.includes(prev) ? null : prev));
+        setCheckedIds(new Set());
+
+        let cancelled = false;
+        const timer = setTimeout(() => commitBulk(ids, action), UNDO_DELAY_MS);
+        toast({
+          message: `${action === "archive" ? "Archived" : "Moved to Trash"} (${ids.length})`,
+          duration: UNDO_DELAY_MS,
+          action: {
+            label: "Undo",
+            onClick: () => {
+              if (cancelled) return;
+              cancelled = true;
+              clearTimeout(timer);
+              setStaleIds((prev) => { const next = new Set(prev); ids.forEach((id) => next.delete(id)); return next; });
+            },
+          },
+        });
+        return;
+      }
+
+      const isUnread = action === "markUnread";
+      setUnreadOverrides((prev) => {
+        const next = { ...prev };
+        ids.forEach((id) => { next[id] = isUnread; });
+        return next;
+      });
+      setCheckedIds(new Set());
+      await commitBulk(ids, action);
+    },
+    [checkedIds, commitBulk]
   );
 
   const anyChecked = checkedIds.size > 0;
@@ -236,8 +301,12 @@ export function InboxPane({ threads, labelMap = {}, todoistEnabled = false, acco
   // Keyboard navigation — reads from refs so the listener is registered once only
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      const tag = (e.target as HTMLElement).tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA" || (e.target as HTMLElement).isContentEditable) return;
+      // Don't intercept keys inside text inputs / editable content
+      const target = e.target as HTMLElement;
+      const tag = target.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || target.isContentEditable) return;
+      // Ignore plain typing while a modifier is held (cmd-c etc.) — let the browser handle it
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
 
       const threads = visibleThreadsRef.current;
       const currentId = selectedThreadIdRef.current;
@@ -257,6 +326,21 @@ export function InboxPane({ threads, labelMap = {}, todoistEnabled = false, acco
       } else if (e.key === "e" && currentId) {
         e.preventDefault();
         handleArchiveSingleRef.current(currentId);
+      } else if ((e.key === "#" || e.key === "Delete") && currentId) {
+        e.preventDefault();
+        handleTrashSingleRef.current(currentId);
+      } else if (e.key === "u" && currentId) {
+        e.preventDefault();
+        const t = threads.find((x) => x.id === currentId);
+        if (t) handleMarkReadToggle(currentId, t.isUnread);
+      } else if (e.key === "r" && currentId) {
+        // Open the thread (the reader pane handles the actual reply focus)
+        e.preventDefault();
+        document.dispatchEvent(new CustomEvent("inbox:reply"));
+      } else if (e.key === "x" && currentId) {
+        e.preventDefault();
+        const idx = threads.findIndex((t) => t.id === currentId);
+        toggleCheck(currentId, idx === -1 ? 0 : idx, false);
       } else if (e.key === "Enter" && !currentId) {
         const first = threads[0];
         if (first) setSelectedThreadId(first.id);
@@ -324,6 +408,7 @@ export function InboxPane({ threads, labelMap = {}, todoistEnabled = false, acco
           onSelectThread={setSelectedThreadId}
           onToggleCheck={toggleCheck}
           onArchive={handleArchiveSingle}
+          onTrash={handleTrashSingle}
           onMarkReadToggle={handleMarkReadToggle}
         />
       </div>

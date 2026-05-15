@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { Inbox, LayoutDashboard, RefreshCw, Settings, Sunrise, X } from "lucide-react";
+import { AlertTriangle, Inbox, LayoutDashboard, RefreshCw, Settings, Sunrise, X } from "lucide-react";
 
 interface Domain {
   id: string;
@@ -21,10 +21,11 @@ interface DomainSidebarProps {
   domains: Domain[];
   counts: WorkItemCounts;
   todayCount: number;
+  syncFailedCount?: number;
   onClose?: () => void;
 }
 
-export function DomainSidebar({ domains, counts, todayCount, onClose }: DomainSidebarProps) {
+export function DomainSidebar({ domains, counts, todayCount, syncFailedCount = 0, onClose }: DomainSidebarProps) {
   const pathname = usePathname();
   const totalActive = counts.active + counts.waiting + counts.delegated;
 
@@ -168,9 +169,27 @@ export function DomainSidebar({ domains, counts, todayCount, onClose }: DomainSi
             href="/settings"
             className="flex flex-1 items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium transition-colors hover:bg-black/5"
             style={{ color: "var(--ds-muted)" }}
+            title={
+              syncFailedCount > 0
+                ? `${syncFailedCount} account${syncFailedCount === 1 ? "" : "s"} failed to sync recently`
+                : "Settings"
+            }
           >
             <Settings className="h-3.5 w-3.5" />
-            Settings
+            <span className="flex-1">Settings</span>
+            {syncFailedCount > 0 && (
+              <span
+                className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold"
+                style={{
+                  background: "color-mix(in oklch, var(--ds-hot) 18%, transparent)",
+                  color: "var(--ds-hot)",
+                }}
+                aria-label={`${syncFailedCount} sync error${syncFailedCount === 1 ? "" : "s"}`}
+              >
+                <AlertTriangle className="h-2.5 w-2.5" />
+                {syncFailedCount}
+              </span>
+            )}
           </Link>
           <Link
             href="/sync-log"

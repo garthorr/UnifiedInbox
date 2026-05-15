@@ -218,6 +218,7 @@ export function InboxFilters({ accounts, labels = [], totalCount, unreadCount }:
           value={searchDraft}
           onChange={(e) => handleSearchChange(e.target.value)}
           placeholder="Search… or type from: has:attachment after: before:"
+          data-search="inbox"
           className="w-full rounded-md border pr-12 pl-9 py-[7px] text-[13px] focus:outline-none focus:ring-2"
           style={{
             background:  "var(--ds-panel-2)",
