@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { AlertTriangle, Inbox, LayoutDashboard, RefreshCw, Settings, Sunrise, X } from "lucide-react";
+import { AlertTriangle, Clock, Inbox, LayoutDashboard, RefreshCw, Settings, Sunrise, X } from "lucide-react";
 
 interface Domain {
   id: string;
@@ -21,11 +21,12 @@ interface DomainSidebarProps {
   domains: Domain[];
   counts: WorkItemCounts;
   todayCount: number;
+  snoozedCount?: number;
   syncFailedCount?: number;
   onClose?: () => void;
 }
 
-export function DomainSidebar({ domains, counts, todayCount, syncFailedCount = 0, onClose }: DomainSidebarProps) {
+export function DomainSidebar({ domains, counts, todayCount, snoozedCount = 0, syncFailedCount = 0, onClose }: DomainSidebarProps) {
   const pathname = usePathname();
   const totalActive = counts.active + counts.waiting + counts.delegated;
 
@@ -114,6 +115,14 @@ export function DomainSidebar({ domains, counts, todayCount, syncFailedCount = 0
           <LayoutDashboard className="h-[14px] w-[14px] flex-shrink-0 opacity-75" />
           <span className="flex-1">Kanban</span>
         </Link>
+
+        {snoozedCount > 0 && (
+          <Link href="/snoozed" className={navCls(pathname === "/snoozed")}>
+            <Clock className="h-[14px] w-[14px] flex-shrink-0 opacity-75" />
+            <span className="flex-1">Snoozed</span>
+            <span className={countCls(pathname === "/snoozed")}>{snoozedCount}</span>
+          </Link>
+        )}
 
         {domains.length > 0 && (
           <p className="px-2.5 py-1 mt-3 font-mono text-[10px] uppercase tracking-widest text-ds-muted">

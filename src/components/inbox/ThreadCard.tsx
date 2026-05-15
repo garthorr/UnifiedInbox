@@ -2,7 +2,7 @@
 
 import { useState, memo } from "react";
 import Link from "next/link";
-import { ExternalLink, Plus, ArrowRight, Paperclip, Trash2 } from "lucide-react";
+import { ExternalLink, Plus, ArrowRight, Paperclip, Trash2, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { gmailThreadUrl, relativeTime, primarySender, parseEmailDisplay } from "@/lib/utils";
 import { CreateWorkItemModal } from "@/components/work-items/CreateWorkItemModal";
@@ -35,6 +35,7 @@ interface ThreadCardProps {
   onToggleCheck?: (id: string, index: number, shiftKey: boolean) => void;
   onArchive?: (id: string) => void;
   onTrash?: (id: string) => void;
+  onSnooze?: (id: string) => void;
   onMarkReadToggle?: (id: string, currentlyUnread: boolean) => void;
 }
 
@@ -94,6 +95,7 @@ export const ThreadCard = memo(function ThreadCard({
   onToggleCheck,
   onArchive,
   onTrash,
+  onSnooze,
   onMarkReadToggle,
 }: ThreadCardProps) {
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -259,6 +261,19 @@ export const ThreadCard = memo(function ThreadCard({
               onClick={(e) => { e.stopPropagation(); onArchive?.(thread.id); }}
             >
               E
+            </button>
+            <button
+              className="rounded border px-1.5 py-0.5 transition-colors hover:bg-ds-ink hover:text-ds-panel"
+              style={{
+                background: "var(--ds-panel)",
+                borderColor: "var(--ds-line)",
+                color: "var(--ds-muted)",
+              }}
+              title="Snooze · S"
+              onClick={(e) => { e.stopPropagation(); onSnooze?.(thread.id); }}
+              aria-label="Snooze thread"
+            >
+              <Clock className="h-3 w-3" />
             </button>
             <button
               className="rounded border px-1.5 py-0.5 transition-colors hover:bg-red-600 hover:text-white hover:border-red-600"

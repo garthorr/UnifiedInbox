@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { prisma } from "@/lib/db";
+import { notSnoozedFilter, isSnoozedFilter } from "@/lib/thread-filters";
 import { DomainSidebar } from "./DomainSidebar";
 import { MobileNavDrawer } from "./MobileNavDrawer";
 
@@ -9,7 +10,7 @@ async function getSidebarData() {
   const oneDayAgo = new Date();
   oneDayAgo.setDate(oneDayAgo.getDate() - 1);
 
-  const [domains, counts, todayCount, syncFailedCount] = await Promise.all([
+  const [domains, counts, todayCount, snoozedCount, syncFailedCount] = await Promise.all([
     prisma.domain.findMany({
       where: { isActive: true },
       orderBy: { sortOrder: "asc" },
@@ -26,7 +27,11 @@ async function getSidebarData() {
         isUnread: true,
         workItemId: null,
         lastMessageAt: { gte: sevenDaysAgo },
+        AND: [notSnoozedFilter()],
       },
+    }),
+    prisma.threadMirror.count({
+      where: { isStale: false, AND: [isSnoozedFilter()] },
     }),
     // Distinct accounts whose most recent activity in the last 24h was a sync
     // failure. Cheap proxy for "something needs your attention in Settings".
@@ -50,11 +55,11 @@ async function getSidebarData() {
     if (c.status === "DELEGATED") countMap.delegated = c._count;
   }
 
-  return { domains, counts: countMap, todayCount, syncFailedCount };
+  return { domains, counts: countMap, todayCount, snoozedCount, syncFailedCount };
 }
 
 export async function AppShell({ children }: { children: ReactNode }) {
-  const { domains, counts, todayCount, syncFailedCount } = await getSidebarData();
+  const { domains, counts, todayCount, snoozedCount, syncFailedCount } = await getSidebarData();
 
   return (
     <div className="flex h-screen items-stretch justify-center">
@@ -66,6 +71,7 @@ export async function AppShell({ children }: { children: ReactNode }) {
             domains={domains}
             counts={counts}
             todayCount={todayCount}
+            snoozedCount={snoozedCount}
             syncFailedCount={syncFailedCount}
           />
         </div>
@@ -82,6 +88,7 @@ export async function AppShell({ children }: { children: ReactNode }) {
               domains={domains}
               counts={counts}
               todayCount={todayCount}
+              snoozedCount={snoozedCount}
               syncFailedCount={syncFailedCount}
             />
             <div className="flex items-center gap-2">

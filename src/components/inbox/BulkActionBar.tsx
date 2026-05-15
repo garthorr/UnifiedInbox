@@ -1,6 +1,6 @@
 "use client";
 
-import { Archive, Mail, MailOpen, Plus, Trash2, X } from "lucide-react";
+import { Archive, Clock, Mail, MailOpen, Plus, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface BulkActionBarProps {
@@ -11,6 +11,7 @@ interface BulkActionBarProps {
   onArchive: () => void;
   onMarkRead: () => void;
   onMarkUnread: () => void;
+  onSnooze: () => void;
   onCreateWorkItem: () => void;
   onAssignToWorkItem: () => void;
   onDelete: () => void;
@@ -24,6 +25,7 @@ export function BulkActionBar({
   onArchive,
   onMarkRead,
   onMarkUnread,
+  onSnooze,
   onCreateWorkItem,
   onAssignToWorkItem,
   onDelete,
@@ -71,6 +73,16 @@ export function BulkActionBar({
         >
           <Mail className="h-3.5 w-3.5" />
           Unread
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 px-2 text-xs gap-1 text-slate-600 hover:text-slate-900"
+          onClick={onSnooze}
+          title={`Snooze ${count} thread${count !== 1 ? "s" : ""}`}
+        >
+          <Clock className="h-3.5 w-3.5" />
+          Snooze
         </Button>
         <Button
           variant="ghost"

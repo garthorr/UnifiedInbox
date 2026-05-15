@@ -24,6 +24,7 @@ const SHORTCUTS: { group: string; items: Shortcut[] }[] = [
       { keys: "g t", label: "Go to Today" },
       { keys: "g i", label: "Go to All Mail (Inbox)" },
       { keys: "g k", label: "Go to Kanban" },
+      { keys: "g z", label: "Go to Snoozed" },
       { keys: "g s", label: "Go to Settings" },
       { keys: "g l", label: "Go to Sync Log" },
       { keys: "/", label: "Focus search" },
@@ -39,6 +40,7 @@ const SHORTCUTS: { group: string; items: Shortcut[] }[] = [
       { keys: "Esc", label: "Close reading pane" },
       { keys: "e", label: "Archive selected thread (undoable)" },
       { keys: "# / Del", label: "Delete selected thread (undoable)" },
+      { keys: "s", label: "Snooze selected thread" },
       { keys: "u", label: "Toggle read/unread" },
       { keys: "r", label: "Reply to selected thread" },
       { keys: "x", label: "Toggle checkbox on selected thread" },
@@ -102,6 +104,7 @@ export function GlobalShortcuts() {
           case "t": e.preventDefault(); router.push("/today"); return;
           case "i": e.preventDefault(); router.push("/"); return;
           case "k": e.preventDefault(); router.push("/kanban"); return;
+          case "z": e.preventDefault(); router.push("/snoozed"); return;
           case "s": e.preventDefault(); router.push("/settings"); return;
           case "l": e.preventDefault(); router.push("/sync-log"); return;
         }

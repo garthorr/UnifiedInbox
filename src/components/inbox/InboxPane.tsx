@@ -6,6 +6,7 @@ import { ThreadList } from "./ThreadList";
 import { BulkActionBar } from "./BulkActionBar";
 import { EmailViewer } from "./EmailViewer";
 import { ComposeEmail } from "./ComposeEmail";
+import { SnoozePicker } from "./SnoozePicker";
 import { CreateWorkItemModal } from "@/components/work-items/CreateWorkItemModal";
 import { BulkAssignWorkItemModal } from "@/components/work-items/BulkAssignWorkItemModal";
 import { messageCache } from "@/lib/client-message-cache";
@@ -54,6 +55,9 @@ export function InboxPane({ threads, labelMap = {}, todoistEnabled = false, acco
   const [showBulkCreateModal, setShowBulkCreateModal] = useState(false);
   const [showBulkAssignModal, setShowBulkAssignModal] = useState(false);
   const [showCompose, setShowCompose] = useState(false);
+  // Snooze picker. `target` is "single" (uses snoozeTargetIdRef) or "bulk" (uses checkedIds).
+  const [snoozeTarget, setSnoozeTarget] = useState<"single" | "bulk" | null>(null);
+  const snoozeTargetIdRef = useRef<string | null>(null);
 
   const lastCheckedIndexRef = useRef<number | null>(null);
 
@@ -190,10 +194,79 @@ export function InboxPane({ threads, labelMap = {}, todoistEnabled = false, acco
   const handleArchiveSingle = useCallback((id: string) => handleDelayedSingle(id, "archive"), [handleDelayedSingle]);
   const handleTrashSingle = useCallback((id: string) => handleDelayedSingle(id, "trash"), [handleDelayedSingle]);
 
+  const handleSnoozeSingle = useCallback((id: string) => {
+    snoozeTargetIdRef.current = id;
+    setSnoozeTarget("single");
+  }, []);
+
+  const commitSnoozeSingle = useCallback(async (id: string, until: Date) => {
+    handleStale(id); // tuck it away immediately
+    try {
+      const res = await fetch(`/api/threads/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "snooze", until: until.toISOString() }),
+        keepalive: true,
+      });
+      if (!res.ok) throw new Error();
+      toast({
+        message: `Snoozed until ${until.toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}`,
+        action: {
+          label: "Undo",
+          onClick: async () => {
+            await fetch(`/api/threads/${id}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ action: "unsnooze" }),
+            });
+            setStaleIds((prev) => { const next = new Set(prev); next.delete(id); return next; });
+          },
+        },
+      });
+    } catch {
+      setStaleIds((prev) => { const next = new Set(prev); next.delete(id); return next; });
+      toast({ message: "Couldn't snooze — please try again", variant: "error" });
+    }
+  }, []);
+
+  const commitSnoozeBulk = useCallback(async (ids: string[], until: Date) => {
+    setStaleIds((prev) => new Set([...prev, ...ids]));
+    setSelectedThreadId((prev) => (prev && ids.includes(prev) ? null : prev));
+    setCheckedIds(new Set());
+    try {
+      const res = await fetch("/api/threads/bulk", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ threadIds: ids, action: "snooze", until: until.toISOString() }),
+        keepalive: true,
+      });
+      if (!res.ok) throw new Error();
+      toast({
+        message: `Snoozed ${ids.length} until ${until.toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}`,
+        action: {
+          label: "Undo",
+          onClick: async () => {
+            await fetch("/api/threads/bulk", {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ threadIds: ids, action: "unsnooze" }),
+            });
+            setStaleIds((prev) => { const next = new Set(prev); ids.forEach((id) => next.delete(id)); return next; });
+          },
+        },
+      });
+    } catch {
+      setStaleIds((prev) => { const next = new Set(prev); ids.forEach((id) => next.delete(id)); return next; });
+      toast({ message: "Couldn't snooze — please try again", variant: "error" });
+    }
+  }, []);
+
   const handleArchiveSingleRef = useRef(handleArchiveSingle);
   handleArchiveSingleRef.current = handleArchiveSingle;
   const handleTrashSingleRef = useRef(handleTrashSingle);
   handleTrashSingleRef.current = handleTrashSingle;
+  const handleSnoozeSingleRef = useRef(handleSnoozeSingle);
+  handleSnoozeSingleRef.current = handleSnoozeSingle;
 
   const handleMarkReadToggle = useCallback(async (id: string, currentlyUnread: boolean) => {
     setUnreadOverrides((prev) => ({ ...prev, [id]: !currentlyUnread })); // optimistic
@@ -329,6 +402,9 @@ export function InboxPane({ threads, labelMap = {}, todoistEnabled = false, acco
       } else if ((e.key === "#" || e.key === "Delete") && currentId) {
         e.preventDefault();
         handleTrashSingleRef.current(currentId);
+      } else if (e.key === "s" && currentId) {
+        e.preventDefault();
+        handleSnoozeSingleRef.current(currentId);
       } else if (e.key === "u" && currentId) {
         e.preventDefault();
         const t = threads.find((x) => x.id === currentId);
@@ -380,6 +456,7 @@ export function InboxPane({ threads, labelMap = {}, todoistEnabled = false, acco
             onArchive={() => handleBulkAction("archive")}
             onMarkRead={() => handleBulkAction("markRead")}
             onMarkUnread={() => handleBulkAction("markUnread")}
+            onSnooze={() => setSnoozeTarget("bulk")}
             onCreateWorkItem={() => setShowBulkCreateModal(true)}
             onAssignToWorkItem={() => setShowBulkAssignModal(true)}
             onDelete={() => handleBulkAction("trash")}
@@ -409,6 +486,7 @@ export function InboxPane({ threads, labelMap = {}, todoistEnabled = false, acco
           onToggleCheck={toggleCheck}
           onArchive={handleArchiveSingle}
           onTrash={handleTrashSingle}
+          onSnooze={handleSnoozeSingle}
           onMarkReadToggle={handleMarkReadToggle}
         />
       </div>
@@ -506,6 +584,20 @@ export function InboxPane({ threads, labelMap = {}, todoistEnabled = false, acco
           onClose={() => setShowCompose(false)}
         />
       )}
+
+      <SnoozePicker
+        open={snoozeTarget !== null}
+        onClose={() => { setSnoozeTarget(null); snoozeTargetIdRef.current = null; }}
+        onSelect={(until) => {
+          if (snoozeTarget === "single") {
+            const id = snoozeTargetIdRef.current;
+            if (id) commitSnoozeSingle(id, until);
+          } else if (snoozeTarget === "bulk") {
+            const ids = [...checkedIds];
+            if (ids.length) commitSnoozeBulk(ids, until);
+          }
+        }}
+      />
     </div>
   );
 }

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 
-type BulkAction = "archive" | "trash" | "markRead" | "markUnread";
+type BulkAction = "archive" | "trash" | "markRead" | "markUnread" | "snooze" | "unsnooze";
 
 export async function PATCH(request: Request) {
   const body = await request.json().catch(() => null);
@@ -11,10 +11,27 @@ export async function PATCH(request: Request) {
 
   const { threadIds, action } = body as { threadIds: string[]; action: BulkAction };
 
-  if (!["archive", "trash", "markRead", "markUnread"].includes(action)) {
+  if (!["archive", "trash", "markRead", "markUnread", "snooze", "unsnooze"].includes(action)) {
     return NextResponse.json({ error: "Invalid action" }, { status: 400 });
   }
   if (!threadIds.length) return NextResponse.json({ updated: 0, failedIds: [] });
+
+  // Snooze/unsnooze: local-only, no provider calls.
+  if (action === "snooze" || action === "unsnooze") {
+    let snoozedUntil: Date | null = null;
+    if (action === "snooze") {
+      const parsed = typeof body.until === "string" ? new Date(body.until) : null;
+      if (!parsed || !Number.isFinite(parsed.getTime()) || parsed.getTime() <= Date.now()) {
+        return NextResponse.json({ error: "snooze requires a future 'until' ISO timestamp" }, { status: 400 });
+      }
+      snoozedUntil = parsed;
+    }
+    const result = await prisma.threadMirror.updateMany({
+      where: { id: { in: threadIds } },
+      data: { snoozedUntil },
+    });
+    return NextResponse.json({ updated: result.count, failedIds: [] });
+  }
 
   const threads = await prisma.threadMirror.findMany({
     where: { id: { in: threadIds } },

@@ -2,7 +2,9 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { serverCacheDelete } from "@/lib/server-message-cache";
 
-type Action = "archive" | "trash" | "markRead" | "markUnread";
+type Action = "archive" | "trash" | "markRead" | "markUnread" | "snooze" | "unsnooze";
+
+const PROVIDER_ACTIONS = ["archive", "trash", "markRead", "markUnread"] as const;
 
 export async function PATCH(
   request: Request,
@@ -12,8 +14,27 @@ export async function PATCH(
   const body = await request.json().catch(() => null);
   const action = body?.action as Action | undefined;
 
-  if (!action || !["archive", "trash", "markRead", "markUnread"].includes(action)) {
+  if (!action || !["archive", "trash", "markRead", "markUnread", "snooze", "unsnooze"].includes(action)) {
     return NextResponse.json({ error: "Invalid action" }, { status: 400 });
+  }
+
+  // Snooze/unsnooze are local-only: no provider call.
+  if (action === "snooze" || action === "unsnooze") {
+    let snoozedUntil: Date | null = null;
+    if (action === "snooze") {
+      const until = body?.until;
+      const parsed = typeof until === "string" ? new Date(until) : null;
+      if (!parsed || !Number.isFinite(parsed.getTime()) || parsed.getTime() <= Date.now()) {
+        return NextResponse.json({ error: "snooze requires a future 'until' ISO timestamp" }, { status: 400 });
+      }
+      snoozedUntil = parsed;
+    }
+    const updated = await prisma.threadMirror.update({
+      where: { id },
+      data: { snoozedUntil },
+    }).catch(() => null);
+    if (!updated) return NextResponse.json({ error: "Thread not found" }, { status: 404 });
+    return NextResponse.json(updated);
   }
 
   const thread = await prisma.threadMirror.findUnique({
@@ -21,6 +42,11 @@ export async function PATCH(
     include: { account: { select: { accountType: true } } },
   });
   if (!thread) return NextResponse.json({ error: "Thread not found" }, { status: 404 });
+
+  if (!PROVIDER_ACTIONS.includes(action)) {
+    // Type-system safety net; should be unreachable given the guard above.
+    return NextResponse.json({ error: "Invalid action" }, { status: 400 });
+  }
 
   try {
     if (thread.account.accountType === "IMAP") {
