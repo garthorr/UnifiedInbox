@@ -15,6 +15,11 @@ import { cn } from "@/lib/utils";
 
 const UNDO_DELAY_MS = 4000;
 
+const PANEL_WIDTH_KEY = "inbox.panelWidth";
+const PANEL_MIN_WIDTH = 280;
+const PANEL_MAX_WIDTH = 720;
+const PANEL_DEFAULT_WIDTH = 380;
+
 interface Thread {
   id: string;
   gmailThreadId: string;
@@ -60,6 +65,44 @@ export function InboxPane({ threads, labelMap = {}, todoistEnabled = false, acco
   const snoozeTargetIdRef = useRef<string | null>(null);
 
   const lastCheckedIndexRef = useRef<number | null>(null);
+
+  // Resizable thread-list panel (desktop only; mobile uses full-width).
+  // Initialised after mount so SSR markup matches the default.
+  const [panelWidth, setPanelWidth] = useState(PANEL_DEFAULT_WIDTH);
+  useEffect(() => {
+    const stored = window.localStorage.getItem(PANEL_WIDTH_KEY);
+    if (!stored) return;
+    const n = parseInt(stored, 10);
+    if (Number.isFinite(n)) {
+      setPanelWidth(Math.min(PANEL_MAX_WIDTH, Math.max(PANEL_MIN_WIDTH, n)));
+    }
+  }, []);
+  const startResize = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startWidth = panelWidth;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    const onMove = (ev: PointerEvent) => {
+      const w = Math.min(
+        PANEL_MAX_WIDTH,
+        Math.max(PANEL_MIN_WIDTH, startWidth + (ev.clientX - startX))
+      );
+      setPanelWidth(w);
+    };
+    const onUp = () => {
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup", onUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      setPanelWidth((w) => {
+        window.localStorage.setItem(PANEL_WIDTH_KEY, String(w));
+        return w;
+      });
+    };
+    document.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerup", onUp);
+  }, [panelWidth]);
 
   const visibleThreads = useMemo(
     () => threads.filter((t) => !staleIds.has(t.id)),
@@ -139,6 +182,23 @@ export function InboxPane({ threads, labelMap = {}, todoistEnabled = false, acco
       } else {
         if (next.has(id)) next.delete(id);
         else next.add(id);
+      }
+      return next;
+    });
+    lastCheckedIndexRef.current = index;
+  }, []);
+
+  // Shift-click on a row: range-check from the last checked anchor to here.
+  // If no anchor exists yet, treat as a plain check on this row.
+  const handleShiftSelect = useCallback((id: string, index: number) => {
+    setCheckedIds((prev) => {
+      const next = new Set(prev);
+      if (lastCheckedIndexRef.current === null) {
+        next.add(id);
+      } else {
+        const lo = Math.min(lastCheckedIndexRef.current, index);
+        const hi = Math.max(lastCheckedIndexRef.current, index);
+        visibleThreadsRef.current.slice(lo, hi + 1).forEach((t) => next.add(t.id));
       }
       return next;
     });
@@ -438,14 +498,14 @@ export function InboxPane({ threads, labelMap = {}, todoistEnabled = false, acco
 
   return (
     <div className="flex flex-1 overflow-hidden h-full">
-      {/* Thread list — full-width on mobile, fixed 380px on desktop */}
+      {/* Thread list — full-width on mobile, user-resizable on desktop */}
       <div
         className={cn(
           "flex-shrink-0 overflow-y-auto border-r flex flex-col",
-          "md:w-[380px]",
+          "md:w-[var(--inbox-list-w)]",
           selectedThreadId ? "hidden md:flex" : "w-full"
         )}
-        style={{ borderColor: "var(--ds-line)" }}
+        style={{ borderColor: "var(--ds-line)", "--inbox-list-w": `${panelWidth}px` } as React.CSSProperties}
       >
         {anyChecked ? (
           <BulkActionBar
@@ -483,12 +543,24 @@ export function InboxPane({ threads, labelMap = {}, todoistEnabled = false, acco
           checkedIds={checkedIds}
           anyChecked={anyChecked}
           onSelectThread={setSelectedThreadId}
+          onShiftSelect={handleShiftSelect}
           onToggleCheck={toggleCheck}
           onArchive={handleArchiveSingle}
           onTrash={handleTrashSingle}
           onSnooze={handleSnoozeSingle}
           onMarkReadToggle={handleMarkReadToggle}
         />
+      </div>
+
+      {/* Drag handle to resize the thread list (desktop only) */}
+      <div
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize thread list"
+        onPointerDown={startResize}
+        className="hidden md:block flex-shrink-0 w-1 cursor-col-resize relative group"
+      >
+        <div className="absolute inset-y-0 left-0 w-1 transition-colors group-hover:bg-[color:var(--ds-accent)]/30 group-active:bg-[color:var(--ds-accent)]/60" />
       </div>
 
       {/* Reading pane — hidden on mobile when nothing selected, full-screen when selected */}

@@ -32,6 +32,7 @@ interface ThreadCardProps {
   anyChecked?: boolean;
   index: number;
   onSelect?: () => void;
+  onShiftSelect?: (id: string, index: number) => void;
   onToggleCheck?: (id: string, index: number, shiftKey: boolean) => void;
   onArchive?: (id: string) => void;
   onTrash?: (id: string) => void;
@@ -92,6 +93,7 @@ export const ThreadCard = memo(function ThreadCard({
   anyChecked = false,
   index,
   onSelect,
+  onShiftSelect,
   onToggleCheck,
   onArchive,
   onTrash,
@@ -119,7 +121,18 @@ export const ThreadCard = memo(function ThreadCard({
             ? "color-mix(in oklch, var(--ds-accent) 8%, transparent)"
             : "var(--ds-panel)",
         }}
-        onClick={onSelect}
+        onMouseDown={(e) => {
+          // Prevent the browser's default shift-click text selection so the
+          // range-select feels like an email client, not a document.
+          if (e.shiftKey) e.preventDefault();
+        }}
+        onClick={(e) => {
+          if (e.shiftKey && onShiftSelect) {
+            onShiftSelect(thread.id, index);
+          } else {
+            onSelect?.();
+          }
+        }}
       >
         {/* Selected left accent */}
         {isSelected && (
