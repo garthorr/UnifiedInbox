@@ -27,6 +27,7 @@ interface ThreadListProps {
   checkedIds?: Set<string>;
   anyChecked?: boolean;
   onSelectThread?: (id: string | null) => void;
+  onShiftSelect?: (id: string, index: number) => void;
   onToggleCheck?: (id: string, index: number, shiftKey: boolean) => void;
   onArchive?: (id: string) => void;
   onTrash?: (id: string) => void;
@@ -65,6 +66,7 @@ export function ThreadList({
   checkedIds,
   anyChecked = false,
   onSelectThread,
+  onShiftSelect,
   onToggleCheck,
   onArchive,
   onTrash,
@@ -112,6 +114,7 @@ export function ThreadList({
         onSelect={() =>
           onSelectThread?.(selectedThreadId === thread.id ? null : thread.id)
         }
+        onShiftSelect={onShiftSelect}
         onToggleCheck={onToggleCheck}
         onArchive={onArchive}
         onTrash={onTrash}
