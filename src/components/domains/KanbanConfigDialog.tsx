@@ -23,6 +23,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogTrigger,
   DialogFooter,
 } from "@/components/ui/dialog";
@@ -138,10 +139,10 @@ export function KanbanConfigDialog({ domainId, columns: initialColumns }: Kanban
       <DialogContent className="max-w-sm">
         <DialogHeader>
           <DialogTitle>Configure Board Columns</DialogTitle>
+          <DialogDescription className="text-xs">
+            Drag to reorder, toggle to show/hide, and rename columns as needed.
+          </DialogDescription>
         </DialogHeader>
-        <p className="text-xs text-slate-500">
-          Drag to reorder, toggle to show/hide, and rename columns as needed.
-        </p>
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           <SortableContext
             items={columns.map((c) => c.status)}

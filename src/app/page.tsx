@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db";
 import { Prisma } from "@prisma/client";
 import { isConfigured as todoistConfigured } from "@/lib/todoist";
 import { parsePositiveInt, parseISODateOrNull } from "@/lib/params";
+import { notSnoozedFilter } from "@/lib/thread-filters";
 import { AppShell } from "@/components/layout/AppShell";
 import { InboxFilters } from "@/components/inbox/InboxFilters";
 import { InboxPane } from "@/components/inbox/InboxPane";
@@ -43,6 +44,17 @@ async function InboxContent({ searchParams }: PageProps) {
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - days);
 
+  const andClauses: Prisma.ThreadMirrorWhereInput[] = [notSnoozedFilter()];
+  if (q) {
+    andClauses.push({
+      OR: [
+        { subject: { contains: q, mode: Prisma.QueryMode.insensitive } },
+        { snippet:  { contains: q, mode: Prisma.QueryMode.insensitive } },
+        { participantAddresses: { hasSome: [q] } },
+      ],
+    });
+  }
+
   const threadWhere: Prisma.ThreadMirrorWhereInput = {
     isStale: false,
     lastMessageAt: {
@@ -54,15 +66,7 @@ async function InboxContent({ searchParams }: PageProps) {
     ...(params.label ? { gmailLabelIds: { has: params.label } } : {}),
     ...(hasAttachment ? { hasAttachments: true } : {}),
     ...(from ? { participantAddresses: { hasSome: [from] } } : {}),
-    ...(q
-      ? {
-          OR: [
-            { subject: { contains: q, mode: Prisma.QueryMode.insensitive } },
-            { snippet:  { contains: q, mode: Prisma.QueryMode.insensitive } },
-            { participantAddresses: { hasSome: [q] } },
-          ],
-        }
-      : {}),
+    AND: andClauses,
   };
 
   const accounts = await prisma.account.findMany({

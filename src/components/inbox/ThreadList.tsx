@@ -29,6 +29,8 @@ interface ThreadListProps {
   onSelectThread?: (id: string | null) => void;
   onToggleCheck?: (id: string, index: number, shiftKey: boolean) => void;
   onArchive?: (id: string) => void;
+  onTrash?: (id: string) => void;
+  onSnooze?: (id: string) => void;
   onMarkReadToggle?: (id: string, currentlyUnread: boolean) => void;
 }
 
@@ -65,6 +67,8 @@ export function ThreadList({
   onSelectThread,
   onToggleCheck,
   onArchive,
+  onTrash,
+  onSnooze,
   onMarkReadToggle,
 }: ThreadListProps) {
   if (threads.length === 0) {
@@ -110,6 +114,8 @@ export function ThreadList({
         }
         onToggleCheck={onToggleCheck}
         onArchive={onArchive}
+        onTrash={onTrash}
+        onSnooze={onSnooze}
         onMarkReadToggle={onMarkReadToggle}
       />
     );

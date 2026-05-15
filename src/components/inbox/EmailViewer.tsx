@@ -192,6 +192,16 @@ export function EmailViewer({
   const lastMsg = messages[messages.length - 1] ?? null;
   const from = messages[0]?.from ?? "";
 
+  // Allow the inbox-level `r` shortcut to open a reply without prop-drilling.
+  useEffect(() => {
+    function onReply() {
+      const last = messages[messages.length - 1] ?? null;
+      if (last) setReplyingTo(last);
+    }
+    document.addEventListener("inbox:reply", onReply);
+    return () => document.removeEventListener("inbox:reply", onReply);
+  }, [messages]);
+
   async function handleSummarize() {
     if (summarizing || messages.length === 0) return;
     setSummarizing(true);

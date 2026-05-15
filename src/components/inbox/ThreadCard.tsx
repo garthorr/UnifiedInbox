@@ -2,7 +2,7 @@
 
 import { useState, memo } from "react";
 import Link from "next/link";
-import { ExternalLink, Plus, ArrowRight, Paperclip } from "lucide-react";
+import { ExternalLink, Plus, ArrowRight, Paperclip, Trash2, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { gmailThreadUrl, relativeTime, primarySender, parseEmailDisplay } from "@/lib/utils";
 import { CreateWorkItemModal } from "@/components/work-items/CreateWorkItemModal";
@@ -34,6 +34,8 @@ interface ThreadCardProps {
   onSelect?: () => void;
   onToggleCheck?: (id: string, index: number, shiftKey: boolean) => void;
   onArchive?: (id: string) => void;
+  onTrash?: (id: string) => void;
+  onSnooze?: (id: string) => void;
   onMarkReadToggle?: (id: string, currentlyUnread: boolean) => void;
 }
 
@@ -92,6 +94,8 @@ export const ThreadCard = memo(function ThreadCard({
   onSelect,
   onToggleCheck,
   onArchive,
+  onTrash,
+  onSnooze,
   onMarkReadToggle,
 }: ThreadCardProps) {
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -259,13 +263,39 @@ export const ThreadCard = memo(function ThreadCard({
               E
             </button>
             <button
+              className="rounded border px-1.5 py-0.5 transition-colors hover:bg-ds-ink hover:text-ds-panel"
+              style={{
+                background: "var(--ds-panel)",
+                borderColor: "var(--ds-line)",
+                color: "var(--ds-muted)",
+              }}
+              title="Snooze · S"
+              onClick={(e) => { e.stopPropagation(); onSnooze?.(thread.id); }}
+              aria-label="Snooze thread"
+            >
+              <Clock className="h-3 w-3" />
+            </button>
+            <button
+              className="rounded border px-1.5 py-0.5 transition-colors hover:bg-red-600 hover:text-white hover:border-red-600"
+              style={{
+                background: "var(--ds-panel)",
+                borderColor: "var(--ds-line)",
+                color: "var(--ds-muted)",
+              }}
+              title="Delete · #"
+              onClick={(e) => { e.stopPropagation(); onTrash?.(thread.id); }}
+              aria-label="Delete thread"
+            >
+              <Trash2 className="h-3 w-3" />
+            </button>
+            <button
               className="rounded border px-1.5 py-0.5 text-[11px] font-semibold transition-colors hover:bg-ds-ink hover:text-ds-panel"
               style={{
                 background: "var(--ds-panel)",
                 borderColor: "var(--ds-line)",
                 color: "var(--ds-ink-2)",
               }}
-              title={thread.isUnread ? "Mark read" : "Mark unread"}
+              title={thread.isUnread ? "Mark read · U" : "Mark unread · U"}
               onClick={(e) => { e.stopPropagation(); onMarkReadToggle?.(thread.id, thread.isUnread); }}
             >
               {thread.isUnread ? "R" : "U"}

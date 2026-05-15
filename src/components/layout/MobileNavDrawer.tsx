@@ -21,9 +21,11 @@ interface MobileNavDrawerProps {
   domains: Domain[];
   counts: WorkItemCounts;
   todayCount: number;
+  snoozedCount?: number;
+  syncFailedCount?: number;
 }
 
-export function MobileNavDrawer({ domains, counts, todayCount }: MobileNavDrawerProps) {
+export function MobileNavDrawer({ domains, counts, todayCount, snoozedCount = 0, syncFailedCount = 0 }: MobileNavDrawerProps) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
 
@@ -60,6 +62,8 @@ export function MobileNavDrawer({ domains, counts, todayCount }: MobileNavDrawer
               domains={domains}
               counts={counts}
               todayCount={todayCount}
+              snoozedCount={snoozedCount}
+              syncFailedCount={syncFailedCount}
               onClose={() => setOpen(false)}
             />
           </div>

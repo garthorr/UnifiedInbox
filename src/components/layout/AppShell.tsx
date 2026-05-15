@@ -1,13 +1,16 @@
 import type { ReactNode } from "react";
 import { prisma } from "@/lib/db";
+import { notSnoozedFilter, isSnoozedFilter } from "@/lib/thread-filters";
 import { DomainSidebar } from "./DomainSidebar";
 import { MobileNavDrawer } from "./MobileNavDrawer";
 
 async function getSidebarData() {
   const sevenDaysAgo = new Date();
   sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+  const oneDayAgo = new Date();
+  oneDayAgo.setDate(oneDayAgo.getDate() - 1);
 
-  const [domains, counts, todayCount] = await Promise.all([
+  const [domains, counts, todayCount, snoozedCount, syncFailedCount] = await Promise.all([
     prisma.domain.findMany({
       where: { isActive: true },
       orderBy: { sortOrder: "asc" },
@@ -24,8 +27,25 @@ async function getSidebarData() {
         isUnread: true,
         workItemId: null,
         lastMessageAt: { gte: sevenDaysAgo },
+        AND: [notSnoozedFilter()],
       },
     }),
+    prisma.threadMirror.count({
+      where: { isStale: false, AND: [isSnoozedFilter()] },
+    }),
+    // Distinct accounts whose most recent activity in the last 24h was a sync
+    // failure. Cheap proxy for "something needs your attention in Settings".
+    prisma.activityLog
+      .findMany({
+        where: {
+          eventType: "ACCOUNT_SYNC_FAILED",
+          createdAt: { gte: oneDayAgo },
+          accountId: { not: null },
+        },
+        distinct: ["accountId"],
+        select: { accountId: true },
+      })
+      .then((rows) => rows.length),
   ]);
 
   const countMap = { active: 0, waiting: 0, delegated: 0 };
@@ -35,11 +55,11 @@ async function getSidebarData() {
     if (c.status === "DELEGATED") countMap.delegated = c._count;
   }
 
-  return { domains, counts: countMap, todayCount };
+  return { domains, counts: countMap, todayCount, snoozedCount, syncFailedCount };
 }
 
 export async function AppShell({ children }: { children: ReactNode }) {
-  const { domains, counts, todayCount } = await getSidebarData();
+  const { domains, counts, todayCount, snoozedCount, syncFailedCount } = await getSidebarData();
 
   return (
     <div className="flex h-screen items-stretch justify-center">
@@ -47,7 +67,13 @@ export async function AppShell({ children }: { children: ReactNode }) {
 
         {/* Desktop sidebar — hidden on mobile */}
         <div className="hidden md:block flex-shrink-0">
-          <DomainSidebar domains={domains} counts={counts} todayCount={todayCount} />
+          <DomainSidebar
+            domains={domains}
+            counts={counts}
+            todayCount={todayCount}
+            snoozedCount={snoozedCount}
+            syncFailedCount={syncFailedCount}
+          />
         </div>
 
         {/* Content column */}
@@ -58,7 +84,13 @@ export async function AppShell({ children }: { children: ReactNode }) {
             className="md:hidden flex-shrink-0 flex items-center gap-3 px-4 py-3 border-b"
             style={{ background: "var(--ds-panel-2)", borderColor: "var(--ds-line)" }}
           >
-            <MobileNavDrawer domains={domains} counts={counts} todayCount={todayCount} />
+            <MobileNavDrawer
+              domains={domains}
+              counts={counts}
+              todayCount={todayCount}
+              snoozedCount={snoozedCount}
+              syncFailedCount={syncFailedCount}
+            />
             <div className="flex items-center gap-2">
               <div
                 className="relative flex-shrink-0 w-6 h-6 rounded-[4px] grid place-items-center"

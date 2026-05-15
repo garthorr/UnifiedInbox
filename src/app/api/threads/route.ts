@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { parsePositiveInt, parseISODateOrNull } from "@/lib/params";
+import { notSnoozedFilter, isSnoozedFilter } from "@/lib/thread-filters";
 import type { Prisma } from "@prisma/client";
 
 export async function GET(request: Request) {
@@ -13,6 +14,7 @@ export async function GET(request: Request) {
   const q              = searchParams.get("q")?.trim().slice(0, 200) ?? "";
   const from           = searchParams.get("from")?.trim() ?? "";
   const hasAttachment  = searchParams.get("hasAttachment") === "true";
+  const snoozedFilter  = searchParams.get("snoozed"); // "true" => only snoozed, otherwise hide snoozed
   const limit          = parsePositiveInt(searchParams.get("limit"), 50, 200);
   const cursor         = searchParams.get("cursor");
 
@@ -39,13 +41,22 @@ export async function GET(request: Request) {
   if (hasAttachment)      where.hasAttachments = true;
   if (from)               where.participantAddresses = { hasSome: [from] };
 
+  // Build the AND chain so it composes cleanly with the search OR.
+  const andClauses: Prisma.ThreadMirrorWhereInput[] = [];
+  if (snoozedFilter === "true") andClauses.push(isSnoozedFilter());
+  else                          andClauses.push(notSnoozedFilter());
+
   if (q) {
-    where.OR = [
-      { subject: { contains: q, mode: "insensitive" } },
-      { snippet:  { contains: q, mode: "insensitive" } },
-      { participantAddresses: { hasSome: [q] } },
-    ];
+    andClauses.push({
+      OR: [
+        { subject: { contains: q, mode: "insensitive" } },
+        { snippet:  { contains: q, mode: "insensitive" } },
+        { participantAddresses: { hasSome: [q] } },
+      ],
+    });
   }
+
+  if (andClauses.length > 0) where.AND = andClauses;
 
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - days);

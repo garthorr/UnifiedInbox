@@ -110,6 +110,7 @@ model ThreadMirror {
   syncedAt              DateTime  @default(now())
   isStale               Boolean   @default(false)
   isFlagged             Boolean   @default(false)
+  snoozedUntil          DateTime?
   workItemId            String?
   domainId              String?   // suggested/assigned domain (independent of work item)
   createdAt             DateTime  @default(now())
@@ -126,6 +127,7 @@ model ThreadMirror {
   @@index([lastMessageAt])
   @@index([isUnread])
   @@index([isStale])
+  @@index([snoozedUntil])
   // Compound indexes for common query patterns
   @@index([accountId, isStale, lastMessageAt])
   @@index([domainId, isStale, lastMessageAt])

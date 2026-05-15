@@ -27,7 +27,10 @@ OAuth tokens and passwords are encrypted at rest. The app is only reachable on y
 - **Work items** — convert one or more threads into a tracked item with title, status, notes (Markdown), checklist, and due date
 - **Kanban board view** — per-domain board *and* a global cross-domain board with configurable columns: toggle visibility, rename labels, reorder; drag cards between columns to update status
 - **List view** — traditional grouped-by-status list, available alongside the board view
-- **Bulk actions** — multi-select threads to assign to a domain, attach to an existing work item, create a new work item, or delete in bulk
+- **Bulk actions** — multi-select threads to assign to a domain, attach to an existing work item, snooze, create a new work item, or delete in bulk
+- **Snooze** — hide a thread until a chosen time; review what's snoozed on the dedicated Snoozed page
+- **Keyboard-first** — j/k navigation, e/#/s/u/r/c/x action keys, g-prefix navigation (g i/t/k/z/s/l), `/` focuses search, `?` opens a help dialog
+- **Undo for destructive actions** — archive and delete delay the server call for 4 seconds and surface an Undo toast
 - **In-app compose & reply** — send new emails and replies from any connected account without leaving the app
 - **Rules engine** — define conditions on subject/sender/snippet/labels/attachments to auto-suggest domains, auto-assign domains, suggest work items, or flag threads for review
 - **Local AI assistance** *(optional, via Ollama)* — draft replies, summarize threads, and suggest work-item titles from email content; runs entirely on your hardware
@@ -188,6 +191,7 @@ src/
     kanban/             # Global cross-domain Kanban board
     login/              # Login page
     settings/           # Settings page (accounts, rules)
+    snoozed/            # Snoozed threads
     sync-log/           # Sync activity log page
     today/              # Today triage view
     work-items/         # Work item detail page
