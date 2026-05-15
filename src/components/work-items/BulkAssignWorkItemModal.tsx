@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 
@@ -68,6 +68,9 @@ export function BulkAssignWorkItemModal({ threadIds, onClose }: BulkAssignWorkIt
       <DialogContent className="max-w-xl">
         <DialogHeader>
           <DialogTitle>Assign {threadIds.length} selected thread{threadIds.length !== 1 ? "s" : ""}</DialogTitle>
+          <DialogDescription>
+            Pick an existing work item to attach the selected thread{threadIds.length !== 1 ? "s" : ""} to.
+          </DialogDescription>
         </DialogHeader>
         <Input
           placeholder="Search work items..."

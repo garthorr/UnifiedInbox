@@ -7,6 +7,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -86,6 +87,9 @@ export function AttachThreadModal({ workItemId, onClose }: AttachThreadModalProp
       <DialogContent className="max-w-xl">
         <DialogHeader>
           <DialogTitle>Attach a Thread</DialogTitle>
+          <DialogDescription>
+            Search for an existing Gmail thread and attach it to this work item.
+          </DialogDescription>
         </DialogHeader>
         <div className="relative">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />

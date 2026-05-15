@@ -7,6 +7,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -85,7 +86,8 @@ export function CreateWorkItemModal({
     try {
       const res = await fetch("/api/todoist/projects");
       if (!res.ok) throw new Error("Failed to load projects");
-      setProjects(await res.json());
+      const data = await res.json();
+      setProjects(Array.isArray(data) ? data : []);
     } catch {
       setTodoistError("Could not load Todoist projects");
     } finally {
@@ -102,8 +104,8 @@ export function CreateWorkItemModal({
     if (!selectedProjectId) { setSections([]); return; }
     setSectionsLoading(true);
     fetch(`/api/todoist/sections?projectId=${encodeURIComponent(selectedProjectId)}`)
-      .then((r) => r.json())
-      .then((data) => setSections(data))
+      .then(async (r) => (r.ok ? r.json() : []))
+      .then((data) => setSections(Array.isArray(data) ? data : []))
       .catch(() => setSections([]))
       .finally(() => setSectionsLoading(false));
   }, [selectedProjectId]);
@@ -161,6 +163,9 @@ export function CreateWorkItemModal({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Create Work Item</DialogTitle>
+          <DialogDescription>
+            Group {isMulti ? "these threads" : "this thread"} into a tracked task, with an optional domain and Todoist export.
+          </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-2">
           <div className="space-y-1.5">

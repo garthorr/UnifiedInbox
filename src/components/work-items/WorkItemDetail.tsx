@@ -23,6 +23,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
 import { EmailViewer } from "@/components/inbox/EmailViewer";
@@ -198,8 +199,8 @@ export function WorkItemDetail({ workItem, allDomains, todoistEnabled }: WorkIte
     if (!selectedProjectId) { setSections([]); return; }
     setSectionsLoading(true);
     fetch(`/api/todoist/sections?projectId=${encodeURIComponent(selectedProjectId)}`)
-      .then((r) => r.json())
-      .then((data) => setSections(data))
+      .then(async (r) => (r.ok ? r.json() : []))
+      .then((data) => setSections(Array.isArray(data) ? data : []))
       .catch(() => setSections([]))
       .finally(() => setSectionsLoading(false));
   }, [selectedProjectId]);
@@ -533,6 +534,9 @@ export function WorkItemDetail({ workItem, allDomains, todoistEnabled }: WorkIte
                     <DialogContent className="max-w-sm">
                       <DialogHeader>
                         <DialogTitle>Export to Todoist</DialogTitle>
+                        <DialogDescription>
+                          Pick a project, optional section, and due date to create a Todoist task for this work item.
+                        </DialogDescription>
                       </DialogHeader>
 
                       {/* Project list */}

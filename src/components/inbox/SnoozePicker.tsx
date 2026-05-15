@@ -6,6 +6,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 
@@ -92,6 +93,9 @@ export function SnoozePicker({ open, onClose, onSelect }: SnoozePickerProps) {
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>Snooze until…</DialogTitle>
+          <DialogDescription>
+            Pick a preset or a custom date to hide this thread until it&apos;s due.
+          </DialogDescription>
         </DialogHeader>
         <div className="grid grid-cols-2 gap-2">
           {PRESETS.map((p) => (
