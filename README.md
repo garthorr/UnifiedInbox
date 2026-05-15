@@ -21,11 +21,16 @@ OAuth tokens and passwords are encrypted at rest. The app is only reachable on y
 
 ## Features
 
-- **Unified inbox** — multiple Gmail and IMAP accounts in one view, filterable by account, unread status, and date range
+- **Unified inbox** — multiple Gmail and IMAP accounts in one view, filterable by account, unread status, sender, label, attachments, and date range
+- **Today view** — daily triage page surfacing recent unread threads alongside active work items
 - **Domains** — define responsibility areas (projects, roles, organizations) and assign threads to them automatically or manually
 - **Work items** — convert one or more threads into a tracked item with title, status, notes (Markdown), checklist, and due date
-- **Kanban board view** — per-domain board with configurable columns: toggle visibility, rename labels, reorder; drag cards between columns to update status
+- **Kanban board view** — per-domain board *and* a global cross-domain board with configurable columns: toggle visibility, rename labels, reorder; drag cards between columns to update status
 - **List view** — traditional grouped-by-status list, available alongside the board view
+- **Bulk actions** — multi-select threads to assign to a domain, attach to an existing work item, create a new work item, or delete in bulk
+- **In-app compose & reply** — send new emails and replies from any connected account without leaving the app
+- **Rules engine** — define conditions on subject/sender/snippet/labels/attachments to auto-suggest domains, auto-assign domains, suggest work items, or flag threads for review
+- **Local AI assistance** *(optional, via Ollama)* — draft replies, summarize threads, and suggest work-item titles from email content; runs entirely on your hardware
 - **Todoist integration** — export work items to Todoist as tasks; completion syncs back automatically
 - **IMAP support** — connect any IMAP/SMTP mailbox in addition to Gmail OAuth accounts
 - **Activity log** — full audit trail of sync events and item changes
@@ -109,6 +114,32 @@ Visit `http://<your-host>:3000`.
 
 ---
 
+## Local AI (optional)
+
+AI features run against a local [Ollama](https://ollama.com) instance — no email content
+ever leaves your network. Without `OLLAMA_BASE_URL` set, the AI endpoints return 503 and
+the rest of the app works normally.
+
+```bash
+# Install ollama, then pull a model
+ollama pull llama3.2
+```
+
+Then set in `.env`:
+
+```env
+OLLAMA_BASE_URL=http://host.docker.internal:11434
+OLLAMA_MODEL=llama3.2
+```
+
+Once configured, the email viewer exposes:
+
+- **Draft reply** — generate a draft response to the open thread, optionally with an instruction
+- **Summarize** — condense long threads to the essentials
+- **Suggest work item** — propose a title and due date from the email content
+
+---
+
 ## Todoist Integration
 
 Set `TODOIST_API_KEY` in `.env` (Settings → Integrations → Developer in Todoist). Once enabled:
@@ -131,6 +162,7 @@ Set `TODOIST_API_KEY` in `.env` (Settings → Integrations → Developer in Todo
 | Drag and drop | dnd-kit |
 | Background jobs | Node.js worker (ts-node + node-cron) |
 | Token encryption | AES-256-GCM |
+| Local AI (optional) | Ollama (default model: llama3.2) |
 | Hosting | Self-hosted Docker Compose |
 
 ---
@@ -143,27 +175,45 @@ src/
     api/
       accounts/         # Account management (Gmail OAuth + IMAP setup)
       activity-log/     # Audit log endpoints
+      ai/               # Ollama-backed draft-reply, summarize, suggest-task
       auth/             # Google OAuth callback
       domains/          # Domain CRUD + Kanban column config
-      threads/          # Thread listing, linking, reply
+      emails/send/      # Compose / send email
+      health/           # Liveness endpoint
+      rules/            # Rules engine CRUD
+      threads/          # Thread listing, linking, reply, bulk actions
       todoist/          # Todoist project/section lookup
-      work-items/       # Work item CRUD + Todoist export
+      work-items/       # Work item CRUD + Todoist export + bulk assign
     domains/            # Domain detail page (list + Kanban views)
+    kanban/             # Global cross-domain Kanban board
     login/              # Login page
-    settings/           # Settings page
+    settings/           # Settings page (accounts, rules)
     sync-log/           # Sync activity log page
+    today/              # Today triage view
     work-items/         # Work item detail page
   components/
     domains/            # DomainThreadsClient, DomainViewToggle, KanbanConfigDialog
-    inbox/              # InboxPane, ThreadCard, ThreadList, InboxFilters
+    inbox/              # InboxPane, ThreadCard, ThreadList, ThreadDrawer, InboxFilters,
+                        # ComposeEmail, ReplyCompose, EmailViewer, AiTaskBar,
+                        # BulkActionBar, SyncAllButton, InboxSkeleton
     layout/             # AppShell, DomainSidebar
+    settings/           # RulesPanel
     shared/             # StatusBadge, DomainBadge
-    work-items/         # WorkItemCard, WorkItemDetail, KanbanBoard, KanbanColumn, KanbanCard
+    work-items/         # WorkItemCard, WorkItemDetail, NotesEditor,
+                        # CreateWorkItemModal, AttachThreadModal, BulkAssignWorkItemModal,
+                        # KanbanBoard, KanbanColumn, KanbanCard
     ui/                 # shadcn/ui primitives
   lib/
+    ai.ts               # Shared Ollama client (generate + JSON parsing)
     auth.ts             # Session/password auth
+    client-message-cache.ts  # Browser-side message body cache
     db.ts               # Prisma client singleton
     encrypt.ts          # Token encryption (AES-256-GCM)
+    env.ts              # Env var helpers
+    params.ts           # Query-param parsing helpers
+    rules.ts            # Rules engine matcher
+    server-message-cache.ts  # Server-side message body cache
+    sync-queue.ts       # In-process sync queue
     todoist.ts          # Todoist API client
     utils.ts            # Shared utilities
     gmail/
@@ -178,6 +228,8 @@ worker/
   index.ts              # Background sync worker (cron)
 prisma/
   schema.prisma         # Database schema
+  migrations/           # Prisma-managed migrations
+  migrations_manual/    # Hand-written SQL migrations
   seed.ts               # Domain seed data
 docs/                   # Phase 0 design documents
 ```
@@ -197,6 +249,9 @@ docs/                   # Phase 0 design documents
 | `APP_URL` | Yes | Base URL of the app (used in OAuth redirects) |
 | `TODOIST_API_KEY` | Optional | Todoist API token (enables Todoist export) |
 | `TODOIST_PROJECT_ID` | Optional | Default Todoist project for exported tasks |
+| `OLLAMA_BASE_URL` | Optional | Base URL of a local Ollama server (enables AI features) |
+| `OLLAMA_MODEL` | Optional | Ollama model name (default `llama3.2`) |
+| `SYNC_LOG_THREADS` | Optional | Set to `true` to log every synced thread to the activity log (high-volume; off by default) |
 
 ---
 
@@ -209,9 +264,10 @@ docs/                   # Phase 0 design documents
 | 2 | Daily usability: notes, search, activity log, IMAP support | **Complete** |
 | 3 | Todoist integration with bidirectional sync | **Complete** |
 | 4 | Kanban board view with configurable columns per domain | **Complete** |
-| 5 | Rules engine and auto-suggestions | Pending |
-| 6 | Local AI assistance | Pending |
-| 7 | Additional integrations (Zoho Projects, OpenProject, calendar) | Pending |
+| 5 | Rules engine and auto-suggestions | **Complete** |
+| 6 | Local AI assistance (Ollama) | **Complete** |
+| 7 | Bulk multi-select, in-app compose, global Kanban, Today view | **Complete** |
+| 8 | Additional integrations (Zoho Projects, OpenProject, calendar) | Pending |
 
 ---
 
