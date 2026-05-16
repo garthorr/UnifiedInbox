@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
 import { ThreadList } from "./ThreadList";
 import { BulkActionBar } from "./BulkActionBar";
@@ -53,7 +54,12 @@ interface InboxPaneProps {
 }
 
 export function InboxPane({ threads, labelMap = {}, todoistEnabled = false, accounts = [] }: InboxPaneProps) {
-  const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
+  const searchParams = useSearchParams();
+  const deepLinkThread = searchParams.get("thread");
+  const [selectedThreadId, setSelectedThreadId] = useState<string | null>(deepLinkThread);
+  useEffect(() => {
+    if (deepLinkThread) setSelectedThreadId(deepLinkThread);
+  }, [deepLinkThread]);
   const [unreadOverrides, setUnreadOverrides] = useState<Record<string, boolean>>({});
   const [staleIds, setStaleIds] = useState<Set<string>>(new Set());
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());

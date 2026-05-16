@@ -11,6 +11,7 @@ import { ReplyCompose } from "./ReplyCompose";
 import { AiTaskBar } from "./AiTaskBar";
 import { CreateWorkItemModal } from "@/components/work-items/CreateWorkItemModal";
 import { gmailThreadUrl } from "@/lib/utils";
+import { loadDraft, replyDraftId } from "@/lib/drafts";
 
 export function invalidateThreadCache(threadId: string) {
   messageCache.delete(threadId);
@@ -201,6 +202,14 @@ export function EmailViewer({
     document.addEventListener("inbox:reply", onReply);
     return () => document.removeEventListener("inbox:reply", onReply);
   }, [messages]);
+
+  // Surface a saved reply draft as soon as the thread loads. The compose UI
+  // restores the body itself via loadDraft; we just need to open the panel.
+  useEffect(() => {
+    if (replyingTo || messages.length === 0) return;
+    if (!loadDraft(replyDraftId(threadId))) return;
+    setReplyingTo(messages[messages.length - 1]);
+  }, [threadId, messages, replyingTo]);
 
   async function handleSummarize() {
     if (summarizing || messages.length === 0) return;
