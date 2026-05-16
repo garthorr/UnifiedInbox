@@ -1,9 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Send, X, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  deleteDraft,
+  loadDraft,
+  replyDraftId,
+  saveDraft,
+  type ReplyDraft,
+} from "@/lib/drafts";
 
 interface ReplyComposeProps {
   threadId: string;
@@ -17,6 +24,8 @@ interface ReplyComposeProps {
   onCancel: () => void;
 }
 
+const AUTOSAVE_DEBOUNCE_MS = 400;
+
 export function ReplyCompose({
   threadId,
   subject,
@@ -27,10 +36,44 @@ export function ReplyCompose({
   onSent,
   onCancel,
 }: ReplyComposeProps) {
-  const [body, setBody] = useState("");
+  const draftKey = replyDraftId(threadId);
+  const restored = loadDraft(draftKey) as ReplyDraft | null;
+
+  const [body, setBody] = useState(restored?.body ?? "");
   const [sending, setSending] = useState(false);
   const [drafting, setDrafting] = useState(false);
   const [error, setError] = useState("");
+  const [savedAt, setSavedAt] = useState<number | null>(restored?.updatedAt ?? null);
+
+  const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
+    autosaveTimer.current = setTimeout(() => {
+      if (!body.trim()) {
+        deleteDraft(draftKey);
+        setSavedAt(null);
+        return;
+      }
+      const draft: ReplyDraft = {
+        id: draftKey,
+        kind: "reply",
+        threadId,
+        threadSubject: subject,
+        to,
+        subject,
+        body,
+        inReplyTo: inReplyTo ?? null,
+        references: references ?? null,
+        updatedAt: Date.now(),
+      };
+      saveDraft(draft);
+      setSavedAt(draft.updatedAt);
+    }, AUTOSAVE_DEBOUNCE_MS);
+    return () => {
+      if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
+    };
+  }, [body, draftKey, inReplyTo, references, subject, threadId, to]);
 
   async function draftWithAi() {
     setDrafting(true);
@@ -68,6 +111,7 @@ export function ReplyCompose({
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error ?? "Failed to send");
       }
+      deleteDraft(draftKey);
       onSent();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to send");
@@ -116,6 +160,8 @@ export function ReplyCompose({
       <div className="flex items-center justify-between px-4 pb-3">
         {error ? (
           <p className="text-xs text-red-500">{error}</p>
+        ) : savedAt ? (
+          <p className="text-xs text-slate-400">Draft saved · ⌘↩ to send</p>
         ) : (
           <p className="text-xs text-slate-400">⌘↩ to send</p>
         )}

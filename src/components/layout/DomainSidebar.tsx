@@ -1,9 +1,11 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { AlertTriangle, Clock, Inbox, LayoutDashboard, RefreshCw, Settings, Sunrise, X } from "lucide-react";
+import { AlertTriangle, Clock, FileEdit, Inbox, LayoutDashboard, RefreshCw, Settings, Sunrise, X } from "lucide-react";
+import { listDrafts, subscribeDrafts } from "@/lib/drafts";
 
 interface Domain {
   id: string;
@@ -29,6 +31,14 @@ interface DomainSidebarProps {
 export function DomainSidebar({ domains, counts, todayCount, snoozedCount = 0, syncFailedCount = 0, onClose }: DomainSidebarProps) {
   const pathname = usePathname();
   const totalActive = counts.active + counts.waiting + counts.delegated;
+
+  // Drafts live in localStorage, so count after mount and subscribe to changes.
+  const [draftCount, setDraftCount] = useState(0);
+  useEffect(() => {
+    const refresh = () => setDraftCount(listDrafts().length);
+    refresh();
+    return subscribeDrafts(refresh);
+  }, []);
 
   function navCls(active: boolean) {
     return cn(
@@ -121,6 +131,14 @@ export function DomainSidebar({ domains, counts, todayCount, snoozedCount = 0, s
             <Clock className="h-[14px] w-[14px] flex-shrink-0 opacity-75" />
             <span className="flex-1">Snoozed</span>
             <span className={countCls(pathname === "/snoozed")}>{snoozedCount}</span>
+          </Link>
+        )}
+
+        {draftCount > 0 && (
+          <Link href="/drafts" className={navCls(pathname === "/drafts")}>
+            <FileEdit className="h-[14px] w-[14px] flex-shrink-0 opacity-75" />
+            <span className="flex-1">Drafts</span>
+            <span className={countCls(pathname === "/drafts")}>{draftCount}</span>
           </Link>
         )}
 

@@ -1,10 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Send, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
+import {
+  deleteDraft,
+  isDraftEmpty,
+  loadDraft,
+  newComposeDraftId,
+  saveDraft,
+  type ComposeDraft,
+} from "@/lib/drafts";
 
 interface Account {
   id: string;
@@ -15,17 +23,66 @@ interface Account {
 interface ComposeEmailProps {
   accounts: Account[];
   defaultAccountId?: string;
+  /** When provided, restores the named draft on mount. */
+  draftId?: string;
   onClose: () => void;
 }
 
-export function ComposeEmail({ accounts, defaultAccountId, onClose }: ComposeEmailProps) {
-  const [accountId, setAccountId] = useState(defaultAccountId ?? accounts[0]?.id ?? "");
-  const [to, setTo] = useState("");
-  const [subject, setSubject] = useState("");
-  const [body, setBody] = useState("");
+const AUTOSAVE_DEBOUNCE_MS = 400;
+
+export function ComposeEmail({ accounts, defaultAccountId, draftId, onClose }: ComposeEmailProps) {
+  // Restore a stored draft (if any) before initial render so the form starts populated.
+  const restored = draftId
+    ? (loadDraft(draftId) as ComposeDraft | null)
+    : null;
+
+  const [accountId, setAccountId] = useState(
+    restored?.accountId ?? defaultAccountId ?? accounts[0]?.id ?? ""
+  );
+  const [to, setTo] = useState(restored?.to ?? "");
+  const [subject, setSubject] = useState(restored?.subject ?? "");
+  const [body, setBody] = useState(restored?.body ?? "");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   const [sent, setSent] = useState(false);
+
+  // Generated lazily — empty composes never write to localStorage.
+  const draftIdRef = useRef<string | null>(restored?.id ?? draftId ?? null);
+  const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [savedAt, setSavedAt] = useState<number | null>(restored?.updatedAt ?? null);
+
+  // Debounced autosave on any field change.
+  useEffect(() => {
+    if (sent) return;
+    if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
+    autosaveTimer.current = setTimeout(() => {
+      const candidate: ComposeDraft = {
+        id: draftIdRef.current ?? newComposeDraftId(),
+        kind: "compose",
+        accountId,
+        to,
+        subject,
+        body,
+        updatedAt: Date.now(),
+      };
+      if (isDraftEmpty(candidate)) {
+        // If we previously persisted something but the user has now cleared it,
+        // clean up rather than leave a ghost row in the Drafts list.
+        if (draftIdRef.current) {
+          deleteDraft(draftIdRef.current);
+          draftIdRef.current = null;
+          setSavedAt(null);
+        }
+        return;
+      }
+      draftIdRef.current = candidate.id;
+      saveDraft(candidate);
+      setSavedAt(candidate.updatedAt);
+    }, AUTOSAVE_DEBOUNCE_MS);
+    return () => {
+      if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
+    };
+  }, [accountId, to, subject, body, sent]);
 
   async function send() {
     if (!to.trim() || !body.trim()) return;
@@ -42,6 +99,7 @@ export function ComposeEmail({ accounts, defaultAccountId, onClose }: ComposeEma
         throw new Error(data.error ?? "Failed to send");
       }
       setSent(true);
+      if (draftIdRef.current) deleteDraft(draftIdRef.current);
       setTimeout(onClose, 1200);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to send");
@@ -54,7 +112,9 @@ export function ComposeEmail({ accounts, defaultAccountId, onClose }: ComposeEma
     <div className="fixed bottom-4 right-4 w-[480px] max-w-[calc(100vw-2rem)] bg-white rounded-xl shadow-2xl border border-slate-200 z-50 flex flex-col overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-2.5 bg-slate-800 text-white rounded-t-xl">
-        <span className="text-sm font-medium">New Message</span>
+        <span className="text-sm font-medium">
+          {restored ? "Continue draft" : "New Message"}
+        </span>
         <button onClick={onClose} className="text-slate-300 hover:text-white">
           <X className="h-4 w-4" />
         </button>
@@ -121,6 +181,8 @@ export function ComposeEmail({ accounts, defaultAccountId, onClose }: ComposeEma
           <p className="text-xs text-green-600 font-medium">Sent!</p>
         ) : error ? (
           <p className="text-xs text-red-500">{error}</p>
+        ) : savedAt ? (
+          <p className="text-xs text-slate-400">Draft saved · ⌘↩ to send</p>
         ) : (
           <p className="text-xs text-slate-400">⌘↩ to send</p>
         )}
