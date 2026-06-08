@@ -2,6 +2,7 @@
 
 import { useRef, useState, useCallback } from "react";
 import { marked } from "marked";
+import { sanitizeHtml } from "@/lib/sanitize";
 import { Bold, Italic, List, Heading2, Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -108,8 +109,10 @@ export function NotesEditor({ value, onChange, onSave, onCancel }: NotesEditorPr
     }
   }
 
+  // marked does not sanitize (the `sanitize` option was removed), so run the
+  // rendered HTML through DOMPurify before injecting it.
   const previewHtml = preview
-    ? (marked.parse(value || "") as string)
+    ? sanitizeHtml(marked.parse(value || "") as string)
     : "";
 
   return (
