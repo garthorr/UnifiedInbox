@@ -40,7 +40,7 @@ OAuth tokens and passwords are encrypted at rest. The app is only reachable on y
 - **IMAP support** — connect any IMAP/SMTP mailbox in addition to Gmail OAuth accounts
 - **Activity log** — full audit trail of sync events and item changes
 - **Background sync** — cron worker keeps threads current and syncs external task state
-- **Real-time updates** — IMAP accounts use IDLE to sync the instant mail arrives; the open UI refreshes itself live via Server-Sent Events (no manual "Sync All")
+- **Real-time updates** — IMAP accounts use IDLE to sync the instant mail arrives; Gmail accounts are polled on a tight cadence (default 2 min, since Gmail push needs a public webhook and this app is LAN-only); the open UI refreshes itself live via Server-Sent Events (no manual "Sync All")
 
 ---
 
@@ -286,6 +286,8 @@ docs/                   # Phase 0 design documents
 | `VAPID_PUBLIC_KEY` | Optional | Web Push public key (`npx web-push generate-vapid-keys`); enables notifications |
 | `VAPID_PRIVATE_KEY` | Optional | Web Push private key (must match the public key; shared by web app + worker) |
 | `VAPID_SUBJECT` | Optional | Contact `mailto:`/`https:` URL for push services (defaults to `APP_URL`) |
+| `SYNC_INTERVAL_MINUTES` | Optional | Full sync sweep cadence in minutes (default `15`) |
+| `GMAIL_SYNC_INTERVAL_MINUTES` | Optional | Gmail-only poll cadence in minutes (default `2`); IMAP uses IDLE instead |
 
 ---
 

@@ -13,6 +13,13 @@ import { isPushConfigured } from "../src/lib/push";
 
 const SYNC_INTERVAL = process.env.SYNC_INTERVAL_MINUTES ?? "15";
 
+// Gmail has no LAN-safe push (Pub/Sub needs a public webhook), so we poll Gmail
+// accounts on a tighter cadence than the general sweep. IMAP accounts get
+// real-time delivery from IDLE, so they don't need this. Clamp to >= 1 minute.
+const GMAIL_SYNC_INTERVAL = String(
+  Math.max(1, parseInt(process.env.GMAIL_SYNC_INTERVAL_MINUTES ?? "2", 10) || 2)
+);
+
 async function enqueueAllAccounts(): Promise<void> {
   const accounts = await prisma.account.findMany({
     where: { isActive: true },
@@ -20,6 +27,15 @@ async function enqueueAllAccounts(): Promise<void> {
   });
   if (accounts.length === 0) return;
   console.log(`[worker] Enqueueing ${accounts.length} account(s) for sync...`);
+  await Promise.all(accounts.map((a) => enqueueSyncJob(a.id)));
+}
+
+async function enqueueGmailAccounts(): Promise<void> {
+  const accounts = await prisma.account.findMany({
+    where: { isActive: true, accountType: "GMAIL" },
+    select: { id: true },
+  });
+  if (accounts.length === 0) return;
   await Promise.all(accounts.map((a) => enqueueSyncJob(a.id)));
 }
 
@@ -73,6 +89,20 @@ cron.schedule(schedule, async () => {
     console.error("[worker] Cron error:", err);
   }
   syncTodoist().catch(console.error);
+});
+
+// Tight Gmail polling: enqueue Gmail accounts on a short cadence (IMAP relies
+// on IDLE instead). The 30s drain below picks the jobs up promptly.
+const gmailSchedule = `*/${GMAIL_SYNC_INTERVAL} * * * *`;
+console.log(`[worker] Polling Gmail accounts every ${GMAIL_SYNC_INTERVAL} minute(s)`);
+
+cron.schedule(gmailSchedule, async () => {
+  try {
+    await enqueueGmailAccounts();
+    await drainQueue();
+  } catch (err) {
+    console.error("[worker] Gmail poll error:", err);
+  }
 });
 
 // Also drain the queue every 30 seconds to pick up API-triggered jobs quickly
