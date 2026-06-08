@@ -21,7 +21,13 @@ export async function isAuthenticated(): Promise<boolean> {
   const expected = hashSecret(process.env.APP_SECRET ?? "");
   // Both are fixed-length SHA-256 hex digests; timingSafeEqual prevents
   // an attacker from brute-forcing the hash one byte at a time via timing.
-  return timingSafeEqual(Buffer.from(value), Buffer.from(expected));
+  // Guard the length first: timingSafeEqual throws a RangeError on
+  // unequal-length buffers, so a tampered/short cookie would otherwise
+  // crash the caller (500) instead of cleanly failing the auth check.
+  const a = Buffer.from(value);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(a, b);
 }
 
 /**

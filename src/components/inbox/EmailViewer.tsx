@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { messageCache } from "@/lib/client-message-cache";
+import { sanitizeHtml } from "@/lib/sanitize";
 import {
   Loader2, ExternalLink, ChevronDown, ChevronUp,
   ArchiveIcon, Trash2, Mail, MailOpen, Reply, Paperclip,
@@ -47,6 +48,10 @@ interface EmailViewerProps {
 
 function MessageFrame({ html }: { html: string }) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  // Sanitize untrusted email HTML before rendering. The iframe sandbox blocks
+  // script execution (no allow-scripts), but unsanitized markup still allows
+  // CSS/meta-refresh/<base> tricks; DOMPurify closes those off too.
+  const safeHtml = useMemo(() => sanitizeHtml(html), [html]);
 
   function handleLoad() {
     const iframe = iframeRef.current;
@@ -58,7 +63,7 @@ function MessageFrame({ html }: { html: string }) {
   return (
     <iframe
       ref={iframeRef}
-      srcDoc={html}
+      srcDoc={safeHtml}
       sandbox="allow-same-origin"
       className="w-full border-0"
       style={{ minHeight: 120 }}

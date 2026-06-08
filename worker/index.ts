@@ -76,7 +76,16 @@ runInitialSyncs()
 const schedule = `*/${SYNC_INTERVAL} * * * *`;
 console.log(`[worker] Scheduling sync every ${SYNC_INTERVAL} minutes`);
 
+// node-cron does not wait for the previous invocation to finish, so a slow
+// sweep (large/slow mailbox) could overlap the next one and double-start IDLE
+// watchers. Guard against re-entrancy.
+let sweepRunning = false;
 cron.schedule(schedule, async () => {
+  if (sweepRunning) {
+    console.warn("[worker] Previous sweep still running — skipping this tick");
+    return;
+  }
+  sweepRunning = true;
   try {
     await reclaimStuckJobs(); // reset any jobs orphaned by a prior worker crash
     await enqueueAllAccounts();
@@ -87,6 +96,8 @@ cron.schedule(schedule, async () => {
     await syncIdleAccounts();
   } catch (err) {
     console.error("[worker] Cron error:", err);
+  } finally {
+    sweepRunning = false;
   }
   syncTodoist().catch(console.error);
 });
@@ -141,3 +152,14 @@ async function shutdown() {
 
 process.on("SIGTERM", shutdown);
 process.on("SIGINT", shutdown);
+
+// The worker is a long-lived process running many fire-and-forget async chains
+// (cron handlers, IMAP IDLE, push). A single unhandled rejection would
+// otherwise terminate the process (Node's default), silently killing all
+// background sync. Log and keep running instead.
+process.on("unhandledRejection", (reason) => {
+  console.error("[worker] Unhandled promise rejection:", reason);
+});
+process.on("uncaughtException", (err) => {
+  console.error("[worker] Uncaught exception:", err);
+});

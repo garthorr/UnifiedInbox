@@ -8,7 +8,14 @@ class LRUMap {
   private map = new Map<string, unknown>();
 
   get(key: string): unknown | undefined {
-    return this.map.get(key);
+    const value = this.map.get(key);
+    // Refresh recency so frequently-read entries aren't evicted first.
+    // Without this the "LRU" degrades to FIFO (insertion-order eviction).
+    if (value !== undefined && this.map.has(key)) {
+      this.map.delete(key);
+      this.map.set(key, value);
+    }
+    return value;
   }
 
   set(key: string, value: unknown) {
