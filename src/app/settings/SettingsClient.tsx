@@ -24,6 +24,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { relativeTime } from "@/lib/utils";
 import { RulesPanel } from "@/components/settings/RulesPanel";
+import { NotificationsPanel } from "@/components/settings/NotificationsPanel";
 
 interface Account {
   id: string;
@@ -549,6 +550,9 @@ export function SettingsClient({ accounts: initialAccounts, todoist, domains: in
           initialRules={rules as Parameters<typeof RulesPanel>[0]["initialRules"]}
           domains={initialDomains.map((d) => ({ id: d.id, name: d.name, color: d.color }))}
         />
+
+        {/* Notifications */}
+        <NotificationsPanel />
 
         {/* Todoist integration */}
         <section>

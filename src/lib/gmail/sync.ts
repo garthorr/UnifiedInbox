@@ -2,6 +2,7 @@ import type { gmail_v1 } from "googleapis";
 import { getGmailClient } from "./client";
 import { prisma } from "../db";
 import { applyRulesToThread } from "../rules";
+import { notifyNewMail } from "../notifications";
 
 const INITIAL_SYNC_DAYS = 90;
 const INITIAL_SYNC_MAX_THREADS = 500;
@@ -125,9 +126,9 @@ async function syncLabels(accountId: string, gmail: gmail_v1.Gmail): Promise<voi
 async function upsertThread(
   accountId: string,
   thread: gmail_v1.Schema$Thread
-): Promise<{ id: string; isNew: boolean }> {
+): Promise<{ id: string; isNew: boolean; isUnread: boolean; subject: string }> {
   const messages = thread.messages ?? [];
-  if (messages.length === 0) return { id: "", isNew: false };
+  if (messages.length === 0) return { id: "", isNew: false, isUnread: false, subject: "" };
 
   const firstMsg = messages[0];
   const lastMsg = messages[messages.length - 1];
@@ -204,7 +205,7 @@ async function upsertThread(
     });
   }
 
-  return { id: row.id, isNew: !existing };
+  return { id: row.id, isNew: !existing, isUnread, subject };
 }
 
 // ─── Fetch thread with metadata ───────────────────────────────────────────────
@@ -388,6 +389,7 @@ export async function incrementalSync(accountId: string): Promise<void> {
   }
 
   let synced = 0;
+  const newUnreadSubjects: string[] = [];
   const affectedIds = [...affectedThreadIds];
   const BATCH = 10;
   for (let i = 0; i < affectedIds.length; i += BATCH) {
@@ -412,8 +414,11 @@ export async function incrementalSync(accountId: string): Promise<void> {
             },
           });
         } else {
-          const { id, isNew } = await upsertThread(accountId, thread);
-          if (isNew) applyRulesToThread(id).catch(() => {});
+          const { id, isNew, isUnread, subject } = await upsertThread(accountId, thread);
+          if (isNew) {
+            applyRulesToThread(id).catch(() => {});
+            if (isUnread) newUnreadSubjects.push(subject);
+          }
           synced++;
         }
       })
@@ -424,6 +429,13 @@ export async function incrementalSync(accountId: string): Promise<void> {
     where: { id: accountId },
     data: { lastSyncAt: new Date() },
   });
+
+  // Notify on genuinely new unread mail (no-op if push/settings disabled).
+  if (newUnreadSubjects.length > 0) {
+    await notifyNewMail(account.email, newUnreadSubjects.length, newUnreadSubjects[0]).catch(
+      (err) => console.error("[push] new-mail notify failed:", err)
+    );
+  }
 
   await prisma.activityLog.create({
     data: {

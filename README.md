@@ -34,10 +34,13 @@ OAuth tokens and passwords are encrypted at rest. The app is only reachable on y
 - **In-app compose & reply** — send new emails and replies from any connected account without leaving the app
 - **Rules engine** — define conditions on subject/sender/snippet/labels/attachments to auto-suggest domains, auto-assign domains, suggest work items, or flag threads for review
 - **Local AI assistance** *(optional, via Ollama)* — draft replies, summarize threads, and suggest work-item titles from email content; runs entirely on your hardware
+- **Push notifications & PWA** *(optional, via VAPID)* — installable as an app on desktop/phone; get Web Push alerts for new mail and task reminders, with per-type toggles and quiet hours
+- **Task reminders** — set a reminder time on any work item and get a push notification when it's due
 - **Todoist integration** — export work items to Todoist as tasks; completion syncs back automatically
 - **IMAP support** — connect any IMAP/SMTP mailbox in addition to Gmail OAuth accounts
 - **Activity log** — full audit trail of sync events and item changes
 - **Background sync** — cron worker keeps threads current and syncs external task state
+- **Real-time updates** — IMAP accounts use IDLE to sync the instant mail arrives; Gmail accounts are polled on a tight cadence (default 2 min, since Gmail push needs a public webhook and this app is LAN-only); the open UI refreshes itself live via Server-Sent Events (no manual "Sync All")
 
 ---
 
@@ -153,6 +156,30 @@ Set `TODOIST_API_KEY` in `.env` (Settings → Integrations → Developer in Todo
 
 ---
 
+## Notifications (optional)
+
+Web Push delivers new-mail alerts and task reminders to your desktop and phone, and makes the
+app installable as a PWA. Notifications are disabled until you generate a VAPID key pair:
+
+```bash
+npx web-push generate-vapid-keys
+```
+
+Set the pair in `.env` (the **same** pair must be available to both the web app and the worker):
+
+```env
+VAPID_PUBLIC_KEY=...
+VAPID_PRIVATE_KEY=...
+VAPID_SUBJECT=mailto:you@example.com
+```
+
+Then open **Settings → Notifications**, click **Enable**, and grant permission. Use **Test** to
+confirm delivery. Per-type toggles (new mail / reminders) and quiet hours live in the same panel.
+Set a reminder time on any work item (next to its due date) to get a push when it's due.
+
+> Push requires a secure context. Browsers treat `http://localhost` as secure, but other hosts
+> need HTTPS for the service worker and Push API to work.
+
 ## Tech Stack
 
 | Layer | Choice |
@@ -256,6 +283,11 @@ docs/                   # Phase 0 design documents
 | `OLLAMA_BASE_URL` | Optional | Base URL of a local Ollama server (enables AI features) |
 | `OLLAMA_MODEL` | Optional | Ollama model name (default `llama3.2`) |
 | `SYNC_LOG_THREADS` | Optional | Set to `true` to log every synced thread to the activity log (high-volume; off by default) |
+| `VAPID_PUBLIC_KEY` | Optional | Web Push public key (`npx web-push generate-vapid-keys`); enables notifications |
+| `VAPID_PRIVATE_KEY` | Optional | Web Push private key (must match the public key; shared by web app + worker) |
+| `VAPID_SUBJECT` | Optional | Contact `mailto:`/`https:` URL for push services (defaults to `APP_URL`) |
+| `SYNC_INTERVAL_MINUTES` | Optional | Full sync sweep cadence in minutes (default `15`) |
+| `GMAIL_SYNC_INTERVAL_MINUTES` | Optional | Gmail-only poll cadence in minutes (default `2`); IMAP uses IDLE instead |
 
 ---
 
@@ -272,6 +304,9 @@ docs/                   # Phase 0 design documents
 | 6 | Local AI assistance (Ollama) | **Complete** |
 | 7 | Bulk multi-select, in-app compose, global Kanban, Today view | **Complete** |
 | 8 | Additional integrations (Zoho Projects, OpenProject, calendar) | Pending |
+| 9 | Push notifications + PWA: new-mail alerts, task reminders, installable app | **In progress** |
+| 9 | Real-time: IMAP IDLE + live UI updates (SSE) so the inbox refreshes itself | **In progress** |
+| 9+ | Real-time Gmail via Pub/Sub push (needs a public webhook — see notes) | Pending |
 
 ---
 
