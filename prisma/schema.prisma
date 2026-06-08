@@ -165,16 +165,18 @@ model Domain {
 }
 
 model WorkItem {
-  id          String          @id @default(uuid())
-  title       String
-  summary     String?         @db.Text
-  status      WorkItemStatus  @default(NEW)
-  domainId    String?
-  dueDate     DateTime?
-  notes       String?         @db.Text
-  checklist   Json?           // [{text: string, done: boolean}]
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
+  id             String          @id @default(uuid())
+  title          String
+  summary        String?         @db.Text
+  status         WorkItemStatus  @default(NEW)
+  domainId       String?
+  dueDate        DateTime?
+  remindAt       DateTime?       // when to fire a push reminder (independent of dueDate)
+  reminderSentAt DateTime?       // set once the remindAt reminder has been delivered
+  notes          String?         @db.Text
+  checklist      Json?           // [{text: string, done: boolean}]
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
 
   domain       Domain?        @relation(fields: [domainId], references: [id])
   threads      ThreadMirror[]
@@ -185,6 +187,8 @@ model WorkItem {
   @@index([status])
   @@index([dueDate])
   @@index([status, domainId])
+  // Drives the worker's reminder scan: unsent reminders that are now due.
+  @@index([remindAt, reminderSentAt])
 }
 
 model TaskLink {
@@ -220,6 +224,32 @@ model Rule {
   domain      Domain?     @relation(fields: [domainId], references: [id], onDelete: SetNull)
 
   @@index([isActive, priority])
+}
+
+// ─── Notifications ──────────────────────────────────────────────────────────
+
+// A browser Web Push subscription (one row per device/browser that opted in).
+model PushSubscription {
+  id        String   @id @default(uuid())
+  endpoint  String   @unique
+  p256dh    String   // client public key (base64url)
+  auth      String   // client auth secret (base64url)
+  userAgent String?
+  createdAt DateTime @default(now())
+  lastUsedAt DateTime @default(now())
+}
+
+// Single-row table holding notification preferences. There is exactly one user,
+// so we pin it to a fixed id ("singleton") and upsert.
+model NotificationSetting {
+  id              String   @id @default("singleton")
+  newMailEnabled  Boolean  @default(true)
+  reminderEnabled Boolean  @default(true)
+  // Quiet hours as 0–23 local hours; null disables. Suppresses new-mail pushes
+  // (reminders still fire — a reminder you set is intentional).
+  quietHoursStart Int?
+  quietHoursEnd   Int?
+  updatedAt       DateTime @updatedAt
 }
 
 model ActivityLog {

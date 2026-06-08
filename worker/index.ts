@@ -7,6 +7,8 @@ import { syncAccount, pruneThreadImportLogs } from "../src/lib/gmail/sync";
 import { drainQueue, enqueueSyncJob, pruneOldJobs, reclaimStuckJobs } from "../src/lib/sync-queue";
 import { drainImapPool } from "../src/lib/imap/pool";
 import { syncTodoistLinks, isConfigured as todoistConfigured } from "../src/lib/todoist";
+import { deliverDueReminders } from "../src/lib/notifications";
+import { isPushConfigured } from "../src/lib/push";
 
 const SYNC_INTERVAL = process.env.SYNC_INTERVAL_MINUTES ?? "15";
 
@@ -75,6 +77,21 @@ cron.schedule("*/30 * * * * *", async () => {
     console.error("[worker] Queue drain error:", err);
   }
 });
+
+// Deliver due task reminders every minute (no-op when push isn't configured).
+if (isPushConfigured()) {
+  console.log("[worker] Push configured — task reminders enabled");
+  cron.schedule("* * * * *", async () => {
+    try {
+      const sent = await deliverDueReminders();
+      if (sent > 0) console.log(`[worker] Delivered ${sent} reminder(s)`);
+    } catch (err) {
+      console.error("[worker] Reminder error:", err);
+    }
+  });
+} else {
+  console.log("[worker] Push not configured (no VAPID keys) — reminders disabled");
+}
 
 console.log("[worker] Started. Waiting for scheduled syncs...");
 

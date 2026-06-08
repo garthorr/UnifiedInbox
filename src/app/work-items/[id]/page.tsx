@@ -82,6 +82,7 @@ export default async function WorkItemPage({ params }: PageProps) {
                 account: log.account,
               })),
               dueDate: workItem.dueDate?.toISOString() ?? null,
+              remindAt: workItem.remindAt?.toISOString() ?? null,
             }}
             allDomains={allDomains}
             todoistEnabled={todoistConfigured()}

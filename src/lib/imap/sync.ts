@@ -2,6 +2,7 @@ import { ImapFlow } from "imapflow";
 import { prisma } from "../db";
 import { decrypt } from "../encrypt";
 import { applyRulesToThread } from "../rules";
+import { notifyNewMail } from "../notifications";
 
 const INITIAL_SYNC_DAYS = 90;
 const INITIAL_SYNC_MAX = 500;
@@ -221,6 +222,7 @@ export async function incrementalSync(accountId: string): Promise<void> {
 
   let maxUid = lastUid;
   let synced = 0;
+  const newUnreadSubjects: string[] = [];
 
   try {
     const lock = await client.getMailboxLock("INBOX");
@@ -278,7 +280,10 @@ export async function incrementalSync(accountId: string): Promise<void> {
           },
           select: { id: true },
         });
-        if (!existing) applyRulesToThread(row.id).catch(() => {});
+        if (!existing) {
+          applyRulesToThread(row.id).catch(() => {});
+          if (isUnread) newUnreadSubjects.push(subject);
+        }
         synced++;
       }
     } finally {
@@ -292,6 +297,13 @@ export async function incrementalSync(accountId: string): Promise<void> {
     where: { id: accountId },
     data: { lastSyncAt: new Date(), historyId: `uid:${maxUid}` },
   });
+
+  // Notify on genuinely new unread mail (no-op if push/settings disabled).
+  if (newUnreadSubjects.length > 0) {
+    await notifyNewMail(account.email, newUnreadSubjects.length, newUnreadSubjects[0]).catch(
+      (err) => console.error("[push] new-mail notify failed:", err)
+    );
+  }
 
   if (synced > 0) {
     await prisma.activityLog.create({

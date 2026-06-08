@@ -34,6 +34,7 @@ import {
   CheckSquare,
   Square,
   Calendar,
+  Bell,
   ArrowUpRight,
   Link2Off,
   Loader2,
@@ -92,6 +93,7 @@ interface WorkItem {
   status: WorkItemStatus;
   domainId: string | null;
   dueDate: string | Date | null;
+  remindAt: string | Date | null;
   notes: string | null;
   checklist: ChecklistItem[] | null;
   domain: Domain | null;
@@ -104,6 +106,28 @@ interface WorkItemDetailProps {
   workItem: WorkItem;
   allDomains: Domain[];
   todoistEnabled: boolean;
+}
+
+// Format a date into the value a <input type="datetime-local"> expects
+// (local time, "YYYY-MM-DDTHH:mm"). Returns "" for null.
+function toLocalInput(value: string | Date | null): string {
+  if (!value) return "";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+// Human-readable label for a reminder datetime-local value.
+function formatReminder(value: string): string {
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+  return d.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 
 const STATUSES: WorkItemStatus[] = [
@@ -143,6 +167,8 @@ export function WorkItemDetail({ workItem, allDomains, todoistEnabled }: WorkIte
     workItem.dueDate ? new Date(workItem.dueDate).toISOString().slice(0, 10) : ""
   );
   const [editingDueDate, setEditingDueDate] = useState(false);
+  const [remindAt, setRemindAt] = useState(toLocalInput(workItem.remindAt));
+  const [editingRemindAt, setEditingRemindAt] = useState(false);
   const [saving, setSaving] = useState(false);
   const [todoistLoading, setTodoistLoading] = useState(false);
   const [todoistError, setTodoistError] = useState("");
@@ -254,6 +280,12 @@ export function WorkItemDetail({ workItem, allDomains, todoistEnabled }: WorkIte
   async function saveDueDate() {
     setEditingDueDate(false);
     await patch({ dueDate: dueDate || null });
+  }
+
+  async function saveReminder() {
+    setEditingRemindAt(false);
+    // Send an ISO timestamp (datetime-local is local time → Date converts it).
+    await patch({ remindAt: remindAt ? new Date(remindAt).toISOString() : null });
   }
 
   async function toggleCheckItem(index: number) {
@@ -429,6 +461,43 @@ export function WorkItemDetail({ workItem, allDomains, todoistEnabled }: WorkIte
               >
                 <Calendar className="h-3 w-3" />
                 {dueDate ? `Due ${formatDate(dueDate)}` : "Set due date"}
+              </button>
+            )}
+
+            {editingRemindAt ? (
+              <div className="flex items-center gap-1">
+                <Input
+                  type="datetime-local"
+                  value={remindAt}
+                  onChange={(e) => setRemindAt(e.target.value)}
+                  className="h-6 text-xs w-48 px-1.5"
+                  autoFocus
+                />
+                <Button size="sm" className="h-6 text-xs px-2" onClick={saveReminder}>
+                  Save
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-6 text-xs px-2"
+                  onClick={() => {
+                    setRemindAt(toLocalInput(workItem.remindAt));
+                    setEditingRemindAt(false);
+                  }}
+                >
+                  Cancel
+                </Button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setEditingRemindAt(true)}
+                className={`flex items-center gap-1 text-xs rounded px-1 -ml-1 hover:bg-slate-100 transition-colors ${
+                  remindAt ? "text-indigo-600" : "text-slate-400"
+                }`}
+                title="Get a push notification at this time"
+              >
+                <Bell className="h-3 w-3" />
+                {remindAt ? `Remind ${formatReminder(remindAt)}` : "Set reminder"}
               </button>
             )}
 

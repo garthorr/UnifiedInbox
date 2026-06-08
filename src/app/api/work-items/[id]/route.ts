@@ -62,6 +62,7 @@ export async function PATCH(
     status,
     domainId,
     dueDate,
+    remindAt,
     notes,
     checklist,
   } = body as {
@@ -70,6 +71,7 @@ export async function PATCH(
     status?: WorkItemStatus;
     domainId?: string | null;
     dueDate?: string | null;
+    remindAt?: string | null;
     notes?: string;
     checklist?: Array<{ text: string; done: boolean }>;
   };
@@ -95,6 +97,11 @@ export async function PATCH(
       ...(domainId !== undefined && { domainId }),
       ...(dueDate !== undefined && {
         dueDate: dueDate ? new Date(dueDate) : null,
+      }),
+      // Setting/clearing a reminder resets the "sent" flag so it can fire again.
+      ...(remindAt !== undefined && {
+        remindAt: remindAt ? new Date(remindAt) : null,
+        reminderSentAt: null,
       }),
       ...(notes !== undefined && { notes }),
       ...(checklist !== undefined && { checklist }),

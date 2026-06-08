@@ -11,6 +11,8 @@ const PUBLIC_PATHS = [
   "/api/auth/connect",
   "/api/auth/callback",
   "/api/health",
+  "/manifest.webmanifest",
+  "/sw.js",
 ];
 
 // Static file extensions — bypass auth entirely
