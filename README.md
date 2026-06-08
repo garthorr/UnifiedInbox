@@ -40,6 +40,7 @@ OAuth tokens and passwords are encrypted at rest. The app is only reachable on y
 - **IMAP support** — connect any IMAP/SMTP mailbox in addition to Gmail OAuth accounts
 - **Activity log** — full audit trail of sync events and item changes
 - **Background sync** — cron worker keeps threads current and syncs external task state
+- **Real-time updates** — IMAP accounts use IDLE to sync the instant mail arrives; the open UI refreshes itself live via Server-Sent Events (no manual "Sync All")
 
 ---
 
@@ -302,7 +303,8 @@ docs/                   # Phase 0 design documents
 | 7 | Bulk multi-select, in-app compose, global Kanban, Today view | **Complete** |
 | 8 | Additional integrations (Zoho Projects, OpenProject, calendar) | Pending |
 | 9 | Push notifications + PWA: new-mail alerts, task reminders, installable app | **In progress** |
-| 9+ | Real-time mail transports (Gmail Pub/Sub push, IMAP IDLE, live UI updates) | Pending |
+| 9 | Real-time: IMAP IDLE + live UI updates (SSE) so the inbox refreshes itself | **In progress** |
+| 9+ | Real-time Gmail via Pub/Sub push (needs a public webhook — see notes) | Pending |
 
 ---
 

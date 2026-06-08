@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { notSnoozedFilter, isSnoozedFilter } from "@/lib/thread-filters";
 import { DomainSidebar } from "./DomainSidebar";
 import { MobileNavDrawer } from "./MobileNavDrawer";
+import { LiveSync } from "./LiveSync";
 
 async function getSidebarData() {
   const sevenDaysAgo = new Date();
@@ -63,6 +64,8 @@ export async function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex h-screen items-stretch justify-center">
+      {/* Live updates: refreshes server components when a sync changes data */}
+      <LiveSync />
       <div className="flex w-full max-w-[1600px] overflow-hidden md:shadow-sm">
 
         {/* Desktop sidebar — hidden on mobile */}

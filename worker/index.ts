@@ -6,6 +6,7 @@ validateEnv();
 import { syncAccount, pruneThreadImportLogs } from "../src/lib/gmail/sync";
 import { drainQueue, enqueueSyncJob, pruneOldJobs, reclaimStuckJobs } from "../src/lib/sync-queue";
 import { drainImapPool } from "../src/lib/imap/pool";
+import { syncIdleAccounts, stopAllIdle } from "../src/lib/imap/idle";
 import { syncTodoistLinks, isConfigured as todoistConfigured } from "../src/lib/todoist";
 import { deliverDueReminders } from "../src/lib/notifications";
 import { isPushConfigured } from "../src/lib/push";
@@ -49,8 +50,11 @@ async function syncTodoist(): Promise<void> {
   }
 }
 
-// On startup: run initial syncs for any never-synced accounts
-runInitialSyncs().catch(console.error);
+// On startup: run initial syncs for any never-synced accounts, then start
+// IMAP IDLE watchers for real-time delivery.
+runInitialSyncs()
+  .then(() => syncIdleAccounts())
+  .catch(console.error);
 
 // Scheduled cron: enqueue all accounts then drain the queue
 const schedule = `*/${SYNC_INTERVAL} * * * *`;
@@ -63,6 +67,8 @@ cron.schedule(schedule, async () => {
     await drainQueue();
     await pruneOldJobs();
     await pruneThreadImportLogs();
+    // Keep IMAP IDLE watchers in sync with the current set of active accounts.
+    await syncIdleAccounts();
   } catch (err) {
     console.error("[worker] Cron error:", err);
   }
@@ -97,6 +103,7 @@ console.log("[worker] Started. Waiting for scheduled syncs...");
 
 async function shutdown() {
   console.log("[worker] Shutting down...");
+  stopAllIdle();
   drainImapPool();
   await prisma.$disconnect();
   process.exit(0);
