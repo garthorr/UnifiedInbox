@@ -295,7 +295,9 @@ export async function initialSync(accountId: string): Promise<void> {
         const { id, isNew } = await upsertThread(accountId, thread);
         if (isNew) applyRulesToThread(id).catch(() => {});
         synced++;
-        if (thread.historyId && thread.historyId > maxHistoryId) {
+        // historyId values are large integers; compare numerically, not
+        // lexically ("9" > "100000" is true as a string compare).
+        if (thread.historyId && BigInt(thread.historyId) > BigInt(maxHistoryId)) {
           maxHistoryId = thread.historyId;
         }
       })
@@ -356,14 +358,10 @@ export async function incrementalSync(accountId: string): Promise<void> {
       pageToken = data.nextPageToken ?? undefined;
       if (data.historyId) latestHistoryId = data.historyId;
     } while (pageToken);
-
-    // Persist the final historyId once after all pages are fetched
-    if (latestHistoryId) {
-      await prisma.account.update({
-        where: { id: accountId },
-        data: { historyId: latestHistoryId },
-      });
-    }
+    // NOTE: latestHistoryId is persisted only *after* the affected threads
+    // are processed below — persisting it here would advance the cursor
+    // before the threads are saved, so a crash mid-processing would skip
+    // that mail permanently on the next incremental sync.
   } catch (err: unknown) {
     // historyId expired → fall back to initial sync
     if (
@@ -425,9 +423,14 @@ export async function incrementalSync(accountId: string): Promise<void> {
     );
   }
 
+  // Advance the history cursor only now that the affected threads have been
+  // persisted, so an interrupted sync re-reads the same history next time.
   await prisma.account.update({
     where: { id: accountId },
-    data: { lastSyncAt: new Date() },
+    data: {
+      lastSyncAt: new Date(),
+      ...(latestHistoryId ? { historyId: latestHistoryId } : {}),
+    },
   });
 
   // Notify on genuinely new unread mail (no-op if push/settings disabled).

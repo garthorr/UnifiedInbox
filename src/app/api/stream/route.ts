@@ -28,6 +28,18 @@ async function computeToken(): Promise<string> {
 export async function GET(request: Request) {
   const encoder = new TextEncoder();
   let interval: ReturnType<typeof setInterval> | null = null;
+  let onAbort: (() => void) | null = null;
+
+  const cleanup = () => {
+    if (interval) {
+      clearInterval(interval);
+      interval = null;
+    }
+    if (onAbort) {
+      request.signal.removeEventListener("abort", onAbort);
+      onAbort = null;
+    }
+  };
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -36,7 +48,7 @@ export async function GET(request: Request) {
           controller.enqueue(encoder.encode(chunk));
         } catch {
           // Controller already closed — stop polling.
-          if (interval) clearInterval(interval);
+          cleanup();
         }
       };
 
@@ -44,6 +56,11 @@ export async function GET(request: Request) {
       send(": connected\n\n");
 
       interval = setInterval(async () => {
+        // Bail if the client went away between ticks.
+        if (request.signal.aborted) {
+          cleanup();
+          return;
+        }
         try {
           const now = await computeToken();
           if (now !== last) {
@@ -57,18 +74,20 @@ export async function GET(request: Request) {
         }
       }, POLL_MS);
 
-      // Clean up when the client disconnects.
-      request.signal.addEventListener("abort", () => {
-        if (interval) clearInterval(interval);
+      // Clean up when the client disconnects. Keep a reference so the listener
+      // can be removed in cleanup() — anonymous listeners leak across reconnects.
+      onAbort = () => {
+        cleanup();
         try {
           controller.close();
         } catch {
           /* already closed */
         }
-      });
+      };
+      request.signal.addEventListener("abort", onAbort);
     },
     cancel() {
-      if (interval) clearInterval(interval);
+      cleanup();
     },
   });
 
