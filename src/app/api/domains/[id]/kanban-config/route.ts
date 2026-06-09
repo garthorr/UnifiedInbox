@@ -1,12 +1,9 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import type { WorkItemStatus } from "@prisma/client";
 
-export interface KanbanColumnConfig {
-  status: WorkItemStatus;
-  label: string;
-  visible: boolean;
-}
+import type { KanbanColumnConfig } from "@/lib/kanban";
+// Re-exported so existing imports of KanbanColumnConfig from this route keep working.
+export type { KanbanColumnConfig };
 
 export async function PATCH(
   request: Request,

@@ -29,11 +29,14 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import type { KanbanColumnConfig } from "@/app/api/domains/[id]/kanban-config/route";
+import { defaultKanbanColumns, type KanbanColumnConfig } from "@/lib/kanban";
 
 interface KanbanConfigDialogProps {
-  domainId: string;
   columns: KanbanColumnConfig[];
+  /** Per-domain board. Omit (and pass `endpoint`) for the global board. */
+  domainId?: string;
+  /** PATCH endpoint that accepts `{ columns }`. Defaults to the domain endpoint. */
+  endpoint?: string;
 }
 
 function SortableRow({
@@ -84,11 +87,17 @@ function SortableRow({
   );
 }
 
-export function KanbanConfigDialog({ domainId, columns: initialColumns }: KanbanConfigDialogProps) {
+export function KanbanConfigDialog({
+  domainId,
+  endpoint,
+  columns: initialColumns,
+}: KanbanConfigDialogProps) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [columns, setColumns] = useState<KanbanColumnConfig[]>(initialColumns);
   const [saving, setSaving] = useState(false);
+
+  const saveUrl = endpoint ?? `/api/domains/${domainId}/kanban-config`;
 
   const sensors = useSensors(useSensor(PointerSensor));
 
@@ -112,7 +121,7 @@ export function KanbanConfigDialog({ domainId, columns: initialColumns }: Kanban
   async function save() {
     setSaving(true);
     try {
-      await fetch(`/api/domains/${domainId}/kanban-config`, {
+      await fetch(saveUrl, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ columns }),
@@ -159,13 +168,23 @@ export function KanbanConfigDialog({ domainId, columns: initialColumns }: Kanban
             </div>
           </SortableContext>
         </DndContext>
-        <DialogFooter>
-          <Button variant="outline" size="sm" onClick={() => setOpen(false)}>
-            Cancel
+        <DialogFooter className="sm:justify-between">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-xs text-slate-500"
+            onClick={() => setColumns(defaultKanbanColumns())}
+          >
+            Reset to defaults
           </Button>
-          <Button size="sm" onClick={save} disabled={saving}>
-            {saving ? "Saving…" : "Save"}
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+            <Button size="sm" onClick={save} disabled={saving}>
+              {saving ? "Saving…" : "Save"}
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

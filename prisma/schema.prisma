@@ -53,28 +53,28 @@ enum ActivityEventType {
 // ─── Models ───────────────────────────────────────────────────────────────────
 
 model Account {
-  id              String    @id @default(uuid())
-  accountType     String    @default("GMAIL")   // "GMAIL" | "IMAP"
-  email           String    @unique
-  displayName     String
-  accessToken     String    // encrypted; for IMAP this is the password
-  refreshToken    String?   // encrypted; null for IMAP accounts
-  tokenExpiresAt  DateTime? // null for IMAP accounts
-  isActive        Boolean   @default(true)
-  lastSyncAt      DateTime?
-  historyId       String?   // Gmail history ID or "uid:<n>" for IMAP
-  color           String    @default("#6366f1") // user-chosen account color
-  imapHost        String?
-  imapPort        Int?
-  smtpHost        String?
-  smtpPort        Int?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  id             String    @id @default(uuid())
+  accountType    String    @default("GMAIL") // "GMAIL" | "IMAP"
+  email          String    @unique
+  displayName    String
+  accessToken    String // encrypted; for IMAP this is the password
+  refreshToken   String? // encrypted; null for IMAP accounts
+  tokenExpiresAt DateTime? // null for IMAP accounts
+  isActive       Boolean   @default(true)
+  lastSyncAt     DateTime?
+  historyId      String? // Gmail history ID or "uid:<n>" for IMAP
+  color          String    @default("#6366f1") // user-chosen account color
+  imapHost       String?
+  imapPort       Int?
+  smtpHost       String?
+  smtpPort       Int?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
-  threads         ThreadMirror[]
-  activityLogs    ActivityLog[]
-  labels          Label[]
-  syncJobs        SyncJob[]
+  threads      ThreadMirror[]
+  activityLogs ActivityLog[]
+  labels       Label[]
+  syncJobs     SyncJob[]
 }
 
 model SyncJob {
@@ -87,38 +87,38 @@ model SyncJob {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  account     Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
   @@index([status, createdAt])
   @@index([accountId, status])
 }
 
 model ThreadMirror {
-  id                    String    @id @default(uuid())
-  gmailThreadId         String
-  accountId             String
-  subject               String
-  snippet               String    @db.Text
-  participantAddresses  String[]
-  gmailLabelIds         String[]
-  messageCount          Int
-  hasAttachments        Boolean   @default(false)
-  isUnread              Boolean   @default(false)
-  lastMessageAt         DateTime
-  firstMessageAt        DateTime
-  historyId             String?
-  syncedAt              DateTime  @default(now())
-  isStale               Boolean   @default(false)
-  isFlagged             Boolean   @default(false)
-  snoozedUntil          DateTime?
-  workItemId            String?
-  domainId              String?   // suggested/assigned domain (independent of work item)
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
+  id                   String    @id @default(uuid())
+  gmailThreadId        String
+  accountId            String
+  subject              String
+  snippet              String    @db.Text
+  participantAddresses String[]
+  gmailLabelIds        String[]
+  messageCount         Int
+  hasAttachments       Boolean   @default(false)
+  isUnread             Boolean   @default(false)
+  lastMessageAt        DateTime
+  firstMessageAt       DateTime
+  historyId            String?
+  syncedAt             DateTime  @default(now())
+  isStale              Boolean   @default(false)
+  isFlagged            Boolean   @default(false)
+  snoozedUntil         DateTime?
+  workItemId           String?
+  domainId             String? // suggested/assigned domain (independent of work item)
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 
-  account               Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  workItem              WorkItem? @relation(fields: [workItemId], references: [id], onDelete: SetNull)
-  domain                Domain?   @relation(fields: [domainId], references: [id], onDelete: SetNull)
+  account  Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  workItem WorkItem? @relation(fields: [workItemId], references: [id], onDelete: SetNull)
+  domain   Domain?   @relation(fields: [domainId], references: [id], onDelete: SetNull)
 
   @@unique([gmailThreadId, accountId])
   @@index([accountId])
@@ -137,46 +137,46 @@ model ThreadMirror {
 model Label {
   id           String  @id @default(uuid())
   accountId    String
-  gmailLabelId String  // e.g. "Label_123" for user labels, "INBOX" for system
+  gmailLabelId String // e.g. "Label_123" for user labels, "INBOX" for system
   name         String
   color        String? // hex from Gmail label backgroundColor
   type         String  @default("user") // "system" | "user"
 
-  account      Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
   @@unique([accountId, gmailLabelId])
   @@index([accountId])
 }
 
 model Domain {
-  id             String     @id @default(uuid())
-  name           String     @unique
-  color          String     @default("#6366f1")
-  description    String?
-  isActive       Boolean    @default(true)
-  sortOrder      Int        @default(0)
-  kanbanColumns  Json?      // KanbanColumnConfig[] — null means use defaults
-  createdAt      DateTime   @default(now())
-  updatedAt      DateTime   @updatedAt
+  id            String   @id @default(uuid())
+  name          String   @unique
+  color         String   @default("#6366f1")
+  description   String?
+  isActive      Boolean  @default(true)
+  sortOrder     Int      @default(0)
+  kanbanColumns Json? // KanbanColumnConfig[] — null means use defaults
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  workItems   WorkItem[]
-  threads     ThreadMirror[]
-  rules       Rule[]
+  workItems WorkItem[]
+  threads   ThreadMirror[]
+  rules     Rule[]
 }
 
 model WorkItem {
-  id             String          @id @default(uuid())
+  id             String         @id @default(uuid())
   title          String
-  summary        String?         @db.Text
-  status         WorkItemStatus  @default(NEW)
+  summary        String?        @db.Text
+  status         WorkItemStatus @default(NEW)
   domainId       String?
   dueDate        DateTime?
-  remindAt       DateTime?       // when to fire a push reminder (independent of dueDate)
-  reminderSentAt DateTime?       // set once the remindAt reminder has been delivered
-  notes          String?         @db.Text
-  checklist      Json?           // [{text: string, done: boolean}]
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
+  remindAt       DateTime? // when to fire a push reminder (independent of dueDate)
+  reminderSentAt DateTime? // set once the remindAt reminder has been delivered
+  notes          String?        @db.Text
+  checklist      Json? // [{text: string, done: boolean}]
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
 
   domain       Domain?        @relation(fields: [domainId], references: [id])
   threads      ThreadMirror[]
@@ -192,36 +192,36 @@ model WorkItem {
 }
 
 model TaskLink {
-  id              String        @id @default(uuid())
-  workItemId      String
-  provider        TaskProvider
-  externalId      String
-  externalUrl     String?
-  externalTitle   String?
-  externalStatus  String?
-  exportedAt      DateTime      @default(now())
-  lastSyncAt      DateTime?
-  createdAt       DateTime      @default(now())
+  id             String       @id @default(uuid())
+  workItemId     String
+  provider       TaskProvider
+  externalId     String
+  externalUrl    String?
+  externalTitle  String?
+  externalStatus String?
+  exportedAt     DateTime     @default(now())
+  lastSyncAt     DateTime?
+  createdAt      DateTime     @default(now())
 
-  workItem        WorkItem      @relation(fields: [workItemId], references: [id], onDelete: Cascade)
+  workItem WorkItem @relation(fields: [workItemId], references: [id], onDelete: Cascade)
 
   @@unique([workItemId, provider])
   @@unique([provider, externalId])
 }
 
 model Rule {
-  id          String      @id @default(uuid())
+  id          String     @id @default(uuid())
   name        String
   description String?
-  isActive    Boolean     @default(true)
-  priority    Int         @default(100)
-  conditions  Json        // [{field, operator, value}]
+  isActive    Boolean    @default(true)
+  priority    Int        @default(100)
+  conditions  Json // [{field, operator, value}]
   action      RuleAction
   domainId    String?
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
 
-  domain      Domain?     @relation(fields: [domainId], references: [id], onDelete: SetNull)
+  domain Domain? @relation(fields: [domainId], references: [id], onDelete: SetNull)
 
   @@index([isActive, priority])
 }
@@ -230,12 +230,12 @@ model Rule {
 
 // A browser Web Push subscription (one row per device/browser that opted in).
 model PushSubscription {
-  id        String   @id @default(uuid())
-  endpoint  String   @unique
-  p256dh    String   // client public key (base64url)
-  auth      String   // client auth secret (base64url)
-  userAgent String?
-  createdAt DateTime @default(now())
+  id         String   @id @default(uuid())
+  endpoint   String   @unique
+  p256dh     String // client public key (base64url)
+  auth       String // client auth secret (base64url)
+  userAgent  String?
+  createdAt  DateTime @default(now())
   lastUsedAt DateTime @default(now())
 }
 
@@ -252,17 +252,26 @@ model NotificationSetting {
   updatedAt       DateTime @updatedAt
 }
 
+// Single-row table holding the global Kanban board configuration (column order,
+// labels, visibility). Per-domain boards override this via Domain.kanbanColumns;
+// the global /kanban board uses this. Pinned to a fixed id ("singleton").
+model KanbanSetting {
+  id        String   @id @default("singleton")
+  columns   Json? // KanbanColumnConfig[] — null means use defaults
+  updatedAt DateTime @updatedAt
+}
+
 model ActivityLog {
-  id          String              @id @default(uuid())
+  id          String            @id @default(uuid())
   eventType   ActivityEventType
   accountId   String?
   workItemId  String?
   description String
   metadata    Json?
-  createdAt   DateTime            @default(now())
+  createdAt   DateTime          @default(now())
 
-  account     Account?            @relation(fields: [accountId], references: [id], onDelete: SetNull)
-  workItem    WorkItem?           @relation(fields: [workItemId], references: [id], onDelete: SetNull)
+  account  Account?  @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  workItem WorkItem? @relation(fields: [workItemId], references: [id], onDelete: SetNull)
 
   @@index([createdAt])
   @@index([accountId])
