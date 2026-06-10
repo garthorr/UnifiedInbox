@@ -28,8 +28,11 @@ RUN npm run build && npm run worker:build
 FROM base AS production
 ENV NODE_ENV=production
 ENV HOSTNAME=0.0.0.0
-COPY --from=builder /app/.next/standalone ./
-COPY --from=builder /app/.next/static ./.next/static
+RUN addgroup -g 1001 -S nodejs && adduser -S nextjs -u 1001 -G nodejs
+# Next.js writes to .next/cache at runtime, so the standalone tree must be
+# owned by the runtime user; everything else is read-only.
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
 # Provide the full production node_modules so prisma migrate deploy has all
 # its transitive dependencies (effect, fast-check, c12, jiti, …).
@@ -37,6 +40,7 @@ COPY --from=prod-deps /app/node_modules ./node_modules
 # Override with the generated Prisma client binary from the builder.
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/prisma ./prisma
+USER nextjs
 EXPOSE 3000
 # Run migrations before starting — prisma migrate deploy is idempotent
 CMD ["sh", "-c", "node node_modules/prisma/build/index.js migrate deploy && node server.js"]
@@ -45,10 +49,12 @@ FROM base AS worker-production
 RUN apk add --no-cache libc6-compat
 ENV NODE_ENV=production
 WORKDIR /app
+RUN addgroup -g 1001 -S nodejs && adduser -S worker -u 1001 -G nodejs
 COPY package*.json ./
 RUN npm ci --omit=dev
 COPY --from=builder /app/worker/dist ./worker/dist
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma/client ./node_modules/@prisma/client
 COPY --from=builder /app/prisma ./prisma
+USER worker
 CMD ["node", "worker/dist/worker/index.js"]

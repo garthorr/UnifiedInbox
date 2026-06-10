@@ -180,6 +180,38 @@ Set a reminder time on any work item (next to its due date) to get a push when i
 > Push requires a secure context. Browsers treat `http://localhost` as secure, but other hosts
 > need HTTPS for the service worker and Push API to work.
 
+---
+
+## Backups
+
+The Postgres volume (`./data/postgres`) is the only copy of your domains, work items, notes,
+and rules — losing it means losing everything that isn't recoverable from your mailboxes.
+Back it up with `pg_dump` from the host:
+
+```bash
+# One-off backup
+docker compose exec -T db pg_dump -U "$POSTGRES_USER" unified_inbox | gzip > unified_inbox_$(date +%F).sql.gz
+```
+
+Recommended: a nightly cron job on the host with two weeks of retention:
+
+```cron
+0 2 * * * cd /path/to/UnifiedInbox && mkdir -p backups && docker compose exec -T db pg_dump -U "$(grep ^POSTGRES_USER .env | cut -d= -f2)" unified_inbox | gzip > backups/unified_inbox_$(date +\%F).sql.gz && find backups -name '*.sql.gz' -mtime +14 -delete
+```
+
+Restore into a fresh database:
+
+```bash
+docker compose up -d db
+gunzip -c backups/unified_inbox_YYYY-MM-DD.sql.gz | docker compose exec -T db psql -U "$POSTGRES_USER" unified_inbox
+docker compose up -d
+```
+
+> Dumps contain your **encrypted** OAuth/IMAP credentials (AES-256-GCM, keyed by
+> `ENCRYPTION_KEY`) and all email metadata the app mirrors. Store them somewhere private,
+> and keep a copy of your `.env` — without `ENCRYPTION_KEY`, restored account credentials
+> are unrecoverable and accounts must be reconnected.
+
 ## Tech Stack
 
 | Layer | Choice |

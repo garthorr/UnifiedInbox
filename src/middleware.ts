@@ -8,7 +8,10 @@ const PUBLIC_PATHS = [
   "/login",
   "/api/auth/login",
   "/api/auth/logout",
-  "/api/auth/connect",
+  // /api/auth/connect is intentionally NOT public: only an authenticated
+  // session may initiate the Gmail OAuth flow. The callback must stay public
+  // (Google redirects the browser there); the state cookie set by connect
+  // gates it.
   "/api/auth/callback",
   "/api/health",
   "/manifest.webmanifest",

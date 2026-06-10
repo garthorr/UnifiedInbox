@@ -132,6 +132,9 @@ model ThreadMirror {
   @@index([accountId, isStale, lastMessageAt])
   @@index([domainId, isStale, lastMessageAt])
   @@index([workItemId, isStale])
+  // Unfiltered inbox/today: WHERE isStale = false AND lastMessageAt >= cutoff
+  // ORDER BY lastMessageAt DESC (no accountId/domainId prefix available)
+  @@index([isStale, lastMessageAt])
 }
 
 model Label {

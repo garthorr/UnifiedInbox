@@ -1,6 +1,7 @@
 import { withImap } from "./pool";
 import { prisma } from "../db";
 import { decrypt } from "../encrypt";
+import { sanitizeHeader } from "../mail-headers";
 import nodemailer from "nodemailer";
 import type { ImapFlow } from "imapflow";
 
@@ -121,7 +122,12 @@ export async function sendEmail(
     ? `${account.displayName} <${account.email}>`
     : account.email;
 
-  await transport.sendMail({ from, to: opts.to, subject: opts.subject, text: opts.body });
+  await transport.sendMail({
+    from,
+    to: sanitizeHeader(opts.to),
+    subject: sanitizeHeader(opts.subject),
+    text: opts.body,
+  });
 }
 
 // ─── Send reply ──────────────────────────────────────────────────────────────
@@ -153,14 +159,17 @@ export async function sendReply(
     ? `${account.displayName} <${account.email}>`
     : account.email;
 
+  // Subject and Message-IDs originate from inbound mail (sender-controlled);
+  // sanitize before they reach header lines.
+  const subject = sanitizeHeader(opts.subject);
   await transport.sendMail({
     from,
-    to: opts.to,
-    subject: opts.subject.startsWith("Re:") ? opts.subject : `Re: ${opts.subject}`,
+    to: sanitizeHeader(opts.to),
+    subject: subject.startsWith("Re:") ? subject : `Re: ${subject}`,
     text: opts.body,
     headers: {
-      ...(opts.inReplyTo ? { "In-Reply-To": opts.inReplyTo } : {}),
-      ...(opts.references ? { References: opts.references } : {}),
+      ...(opts.inReplyTo ? { "In-Reply-To": sanitizeHeader(opts.inReplyTo) } : {}),
+      ...(opts.references ? { References: sanitizeHeader(opts.references) } : {}),
     },
   });
 }
