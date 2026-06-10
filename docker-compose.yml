@@ -33,6 +33,11 @@ services:
       - traefik
     restart: unless-stopped
     mem_limit: 1g
+    # Lets the container reach services on the Docker host (e.g. a local Ollama
+    # at http://host.docker.internal:11434). On Linux this mapping is required —
+    # host.docker.internal does not resolve inside containers without it.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=traefik"
@@ -56,6 +61,8 @@ services:
       - internal
     restart: unless-stopped
     mem_limit: 512m
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
 networks:
   internal:

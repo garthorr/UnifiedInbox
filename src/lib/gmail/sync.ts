@@ -3,6 +3,7 @@ import { getGmailClient } from "./client";
 import { prisma } from "../db";
 import { applyRulesToThread } from "../rules";
 import { notifyNewMail } from "../notifications";
+import { HIDDEN_LABELS } from "../thread-filters";
 
 const INITIAL_SYNC_DAYS = 90;
 const INITIAL_SYNC_MAX_THREADS = 500;
@@ -153,6 +154,17 @@ async function upsertThread(
     where: { gmailThreadId_accountId: { gmailThreadId: thread.id!, accountId } },
     select: { id: true },
   });
+
+  // Skip spam/trash. The initial sync's search query never returns these, but
+  // the incremental History API does (e.g. a message auto-classified as spam),
+  // so guard here too. A brand-new spam thread is dropped entirely — no rules,
+  // no new-mail push. An existing thread that *becomes* spam still gets its
+  // labels updated below so the query-time filter hides it (and un-flagging it
+  // in Gmail brings it back on the next sync).
+  const isHidden = gmailLabelIds.some((l) => (HIDDEN_LABELS as readonly string[]).includes(l));
+  if (isHidden && !existing) {
+    return { id: "", isNew: false, isUnread: false, subject };
+  }
 
   const row = await prisma.threadMirror.upsert({
     where: {

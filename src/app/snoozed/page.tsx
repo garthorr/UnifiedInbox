@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { prisma } from "@/lib/db";
 import { isConfigured as todoistConfigured } from "@/lib/todoist";
-import { isSnoozedFilter } from "@/lib/thread-filters";
+import { isSnoozedFilter, notSpamFilter } from "@/lib/thread-filters";
 import { AppShell } from "@/components/layout/AppShell";
 import { SnoozedClient } from "./SnoozedClient";
 
@@ -14,7 +14,7 @@ export default async function SnoozedPage() {
       orderBy: { createdAt: "asc" },
     }),
     prisma.threadMirror.findMany({
-      where: { isStale: false, AND: [isSnoozedFilter()] },
+      where: { isStale: false, AND: [isSnoozedFilter(), notSpamFilter()] },
       orderBy: { snoozedUntil: "asc" },
       take: 200,
       include: {

@@ -10,6 +10,7 @@ import { WorkItemCard } from "@/components/work-items/WorkItemCard";
 import { KanbanBoard } from "@/components/work-items/KanbanBoard";
 import { DomainThreadsClient } from "@/components/domains/DomainThreadsClient";
 import { DomainViewToggle } from "@/components/domains/DomainViewToggle";
+import { notSpamFilter } from "@/lib/thread-filters";
 import { KanbanConfigDialog } from "@/components/domains/KanbanConfigDialog";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Plus } from "lucide-react";
@@ -50,7 +51,7 @@ export default async function DomainPage({ params, searchParams }: PageProps) {
       include: { _count: { select: { threads: true } } },
     }),
     prisma.threadMirror.findMany({
-      where: { domainId: id, workItemId: null, isStale: false },
+      where: { domainId: id, workItemId: null, isStale: false, ...notSpamFilter() },
       orderBy: { lastMessageAt: "desc" },
       take: 30,
       include: {
