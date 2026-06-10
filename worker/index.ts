@@ -10,6 +10,7 @@ import { syncIdleAccounts, stopAllIdle } from "../src/lib/imap/idle";
 import { syncTodoistLinks, isConfigured as todoistConfigured } from "../src/lib/todoist";
 import { deliverDueReminders } from "../src/lib/notifications";
 import { isPushConfigured } from "../src/lib/push";
+import { pruneOldData } from "../src/lib/maintenance";
 
 const SYNC_INTERVAL = process.env.SYNC_INTERVAL_MINUTES ?? "15";
 
@@ -112,6 +113,7 @@ cron.schedule(schedule, async () => {
     await drainQueue();
     await pruneOldJobs();
     await pruneThreadImportLogs();
+    await pruneOldData();
     // Keep IMAP IDLE watchers in sync with the current set of active accounts.
     await syncIdleAccounts();
   } catch (err) {

@@ -4,8 +4,16 @@ data/
 # Build artifacts
 .next/
 node_modules/
+worker/dist/
+tsconfig.tsbuildinfo
 
 # Dev artifacts
 .env
 .env.local
 *.log
+
+# Not needed in the image
+.git/
+docs/
+backups/
+*.md

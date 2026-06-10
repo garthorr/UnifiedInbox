@@ -56,6 +56,24 @@ export async function GET(request: Request) {
     });
   }
 
+  // Keyset pagination on (lastMessageAt, id): the opaque cursor encodes the
+  // last row's sort key, so pages stay stable when new threads arrive (a
+  // row-id cursor shifts when rows are inserted ahead of it) and the DB can
+  // seek instead of re-finding the cursor row.
+  if (cursor) {
+    const sep = cursor.lastIndexOf("|");
+    const cursorDate = sep > 0 ? parseISODateOrNull(cursor.slice(0, sep)) : null;
+    const cursorId = sep > 0 ? cursor.slice(sep + 1) : "";
+    if (cursorDate && cursorId) {
+      andClauses.push({
+        OR: [
+          { lastMessageAt: { lt: cursorDate } },
+          { lastMessageAt: cursorDate, id: { lt: cursorId } },
+        ],
+      });
+    }
+  }
+
   if (andClauses.length > 0) where.AND = andClauses;
 
   const cutoff = new Date();
@@ -69,9 +87,8 @@ export async function GET(request: Request) {
 
   const threads = await prisma.threadMirror.findMany({
     where,
-    orderBy: { lastMessageAt: "desc" },
+    orderBy: [{ lastMessageAt: "desc" }, { id: "desc" }],
     take: limit + 1,
-    ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     include: {
       account:  { select: { id: true, email: true, displayName: true } },
       domain:   { select: { id: true, name: true, color: true } },
@@ -79,9 +96,10 @@ export async function GET(request: Request) {
     },
   });
 
-  const hasMore    = threads.length > limit;
-  const items      = hasMore ? threads.slice(0, limit) : threads;
-  const nextCursor = hasMore ? items[items.length - 1].id : null;
+  const hasMore = threads.length > limit;
+  const items   = hasMore ? threads.slice(0, limit) : threads;
+  const last    = items[items.length - 1];
+  const nextCursor = hasMore && last ? `${last.lastMessageAt.toISOString()}|${last.id}` : null;
 
   return NextResponse.json({ threads: items, nextCursor });
 }

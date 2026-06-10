@@ -1,4 +1,6 @@
-FROM node:20-alpine AS base
+# Minor-version pin: patch releases still flow, but a rebuild can't silently
+# jump to a new minor/major. Bump deliberately.
+FROM node:20.18-alpine AS base
 WORKDIR /app
 
 FROM base AS dev

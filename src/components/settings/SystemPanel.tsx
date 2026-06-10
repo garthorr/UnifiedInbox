@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { CheckCircle, AlertCircle, RefreshCw, MonitorSmartphone } from "lucide-react";
+import { CheckCircle, AlertCircle, RefreshCw, MonitorSmartphone, Download } from "lucide-react";
 import { relativeTime } from "@/lib/utils";
 import { toast } from "@/lib/toast";
 
@@ -206,6 +206,23 @@ export function SystemPanel() {
               ))}
             </ul>
           )}
+        </div>
+
+        {/* Data export */}
+        <div className="flex items-center justify-between rounded-lg border bg-white px-4 py-3">
+          <div>
+            <p className="text-sm font-medium text-slate-800">Data export</p>
+            <p className="text-xs text-slate-500">
+              Domains, work items, notes, and rules — everything not recoverable from your
+              mailboxes. No credentials included.
+            </p>
+          </div>
+          <a href="/api/admin/export" className="flex-shrink-0">
+            <Button variant="outline" size="sm" className="h-7 text-xs gap-1">
+              <Download className="h-3 w-3" />
+              Export JSON
+            </Button>
+          </a>
         </div>
       </div>
     </section>
