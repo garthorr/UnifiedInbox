@@ -264,6 +264,28 @@ model KanbanSetting {
   updatedAt DateTime @updatedAt
 }
 
+// Login sessions. The cookie holds a random token; only its SHA-256 hash is
+// stored, so a database leak doesn't yield usable session credentials.
+// Deleting a row revokes that session immediately.
+model Session {
+  id         String   @id @default(uuid())
+  tokenHash  String   @unique
+  userAgent  String?
+  createdAt  DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+  expiresAt  DateTime
+
+  @@index([expiresAt])
+}
+
+// Single-row table the background worker touches on a short cadence so the
+// web app (status panel, /api/health) can tell whether it's alive.
+model WorkerStatus {
+  id          String   @id @default("singleton")
+  startedAt   DateTime @default(now())
+  heartbeatAt DateTime @default(now())
+}
+
 model ActivityLog {
   id          String            @id @default(uuid())
   eventType   ActivityEventType

@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-
-const COOKIE_NAME = "console_session";
+import { COOKIE_NAME, validateSessionToken } from "@/lib/auth";
 
 // Paths that don't require authentication
 const PUBLIC_PATHS = [
@@ -25,26 +24,6 @@ function isPublic(pathname: string): boolean {
   return PUBLIC_PATHS.some((p) => pathname.startsWith(p));
 }
 
-async function hashSecret(secret: string): Promise<string> {
-  const encoded = new TextEncoder().encode(secret);
-  const hashBuffer = await crypto.subtle.digest("SHA-256", encoded);
-  return Array.from(new Uint8Array(hashBuffer))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-}
-
-// Constant-time string comparison to prevent timing attacks.
-// Both inputs are always 64-char hex digests so length will match,
-// but we still XOR-accumulate over the longer length for safety.
-function timingSafeEqual(a: string, b: string): boolean {
-  const len = Math.max(a.length, b.length);
-  let diff = a.length ^ b.length; // non-zero if lengths differ
-  for (let i = 0; i < len; i++) {
-    diff |= (a.charCodeAt(i) ?? 0) ^ (b.charCodeAt(i) ?? 0);
-  }
-  return diff === 0;
-}
-
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
@@ -55,10 +34,8 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  const sessionCookie = request.cookies.get(COOKIE_NAME)?.value ?? "";
-  const expected = await hashSecret(process.env.APP_SECRET ?? "");
-
-  if (!timingSafeEqual(sessionCookie, expected)) {
+  const token = request.cookies.get(COOKIE_NAME)?.value ?? "";
+  if (!(await validateSessionToken(token))) {
     // API routes return 401 JSON; page routes redirect to login
     if (pathname.startsWith("/api/")) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -73,4 +50,7 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+  // Node runtime (stable since Next 15.5) so session validation can query
+  // the database via Prisma — required for real, revocable sessions.
+  runtime: "nodejs",
 };

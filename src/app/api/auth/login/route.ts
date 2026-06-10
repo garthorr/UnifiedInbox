@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { buildSessionCookie } from "@/lib/auth";
+import { timingSafeEqual } from "crypto";
+import { createSession } from "@/lib/auth";
 
 // In-process sliding-window rate limiter: max 10 failed attempts per 15 min per IP.
 const WINDOW_MS = 15 * 60 * 1000;
@@ -8,6 +9,12 @@ const attempts = new Map<string, { count: number; windowStart: number }>();
 
 function isRateLimited(ip: string): boolean {
   const now = Date.now();
+  // Evict expired windows so the map doesn't grow unbounded across IPs.
+  if (attempts.size > 100) {
+    for (const [key, entry] of attempts) {
+      if (now - entry.windowStart > WINDOW_MS) attempts.delete(key);
+    }
+  }
   const entry = attempts.get(ip);
   if (!entry || now - entry.windowStart > WINDOW_MS) {
     attempts.set(ip, { count: 1, windowStart: now });
@@ -19,6 +26,14 @@ function isRateLimited(ip: string): boolean {
 
 function resetAttempts(ip: string) {
   attempts.delete(ip);
+}
+
+/** Constant-time password check — a plain !== leaks match length/prefix timing. */
+function secretMatches(candidate: string, expected: string): boolean {
+  const a = Buffer.from(candidate);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(a, b);
 }
 
 export async function POST(request: Request) {
@@ -37,12 +52,13 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
   const { secret } = body as { secret?: string };
 
-  if (!secret || secret !== process.env.APP_SECRET) {
+  const expected = process.env.APP_SECRET ?? "";
+  if (!expected || !secret || !secretMatches(secret, expected)) {
     return NextResponse.json({ error: "Invalid password" }, { status: 401 });
   }
 
   resetAttempts(ip);
-  const cookie = buildSessionCookie();
+  const cookie = await createSession(request.headers.get("user-agent"));
   const response = NextResponse.json({ ok: true });
   response.cookies.set(cookie.name, cookie.value, cookie.options);
   return response;

@@ -66,6 +66,26 @@ async function syncTodoist(): Promise<void> {
   }
 }
 
+// Heartbeat: touch the WorkerStatus singleton so the web app (status panel,
+// /api/health) can tell the worker is alive. Runs on its own schedule so a
+// slow sweep doesn't make a healthy worker look dead.
+const WORKER_STARTED_AT = new Date();
+async function beatHeartbeat(): Promise<void> {
+  await prisma.workerStatus.upsert({
+    where: { id: "singleton" },
+    create: { id: "singleton", startedAt: WORKER_STARTED_AT, heartbeatAt: new Date() },
+    update: { startedAt: WORKER_STARTED_AT, heartbeatAt: new Date() },
+  });
+}
+beatHeartbeat().catch((err) => console.error("[worker] Heartbeat error:", err));
+cron.schedule("*/30 * * * * *", async () => {
+  try {
+    await beatHeartbeat();
+  } catch (err) {
+    console.error("[worker] Heartbeat error:", err);
+  }
+});
+
 // On startup: run initial syncs for any never-synced accounts, then start
 // IMAP IDLE watchers for real-time delivery.
 runInitialSyncs()

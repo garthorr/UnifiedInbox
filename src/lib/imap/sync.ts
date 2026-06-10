@@ -86,6 +86,17 @@ interface ThreadAccum {
   hasAttachments: boolean;
 }
 
+/** Run an async fn over items with bounded concurrency (protects the DB pool). */
+async function inBatches<T>(
+  items: T[],
+  size: number,
+  fn: (item: T) => Promise<unknown>
+): Promise<void> {
+  for (let i = 0; i < items.length; i += size) {
+    await Promise.all(items.slice(i, i + size).map(fn));
+  }
+}
+
 // ─── Initial sync ──────────────────────────────────────────────────────────
 
 export async function initialSync(accountId: string): Promise<void> {
@@ -155,46 +166,58 @@ export async function initialSync(accountId: string): Promise<void> {
     await client.logout().catch(() => {});
   }
 
-  // Persist threads and apply rules to new ones
-  for (const [tid, t] of threads) {
-    const existing = await prisma.threadMirror.findUnique({
-      where: { gmailThreadId_accountId: { gmailThreadId: tid, accountId } },
-      select: { id: true },
-    });
-    const row = await prisma.threadMirror.upsert({
-      where: { gmailThreadId_accountId: { gmailThreadId: tid, accountId } },
-      create: {
-        gmailThreadId: tid,
-        accountId,
-        subject: t.subject,
-        snippet: "",
-        participantAddresses: [...t.participants],
-        gmailLabelIds: ["INBOX"],
-        messageCount: t.uids.length,
-        hasAttachments: t.hasAttachments,
-        isUnread: t.isUnread,
-        lastMessageAt: t.lastDate,
-        firstMessageAt: t.firstDate,
-        historyId: String(Math.max(...t.uids)),
-        isStale: false,
-      },
-      update: {
-        subject: t.subject,
-        participantAddresses: [...t.participants],
-        gmailLabelIds: ["INBOX"],
-        messageCount: t.uids.length,
-        hasAttachments: t.hasAttachments,
-        isUnread: t.isUnread,
-        lastMessageAt: t.lastDate,
-        firstMessageAt: t.firstDate,
-        historyId: String(Math.max(...t.uids)),
-        isStale: false,
-        syncedAt: new Date(),
-      },
-      select: { id: true },
-    });
-    if (!existing) applyRulesToThread(row.id).catch(() => {});
-  }
+  // Persist threads: one existence query + one transaction of upserts instead
+  // of two round-trips per thread.
+  const tids = [...threads.keys()];
+  const knownRows = await prisma.threadMirror.findMany({
+    where: { accountId, gmailThreadId: { in: tids } },
+    select: { gmailThreadId: true },
+  });
+  const known = new Set(knownRows.map((r) => r.gmailThreadId));
+
+  const rows = await prisma.$transaction(
+    tids.map((tid) => {
+      const t = threads.get(tid)!;
+      return prisma.threadMirror.upsert({
+        where: { gmailThreadId_accountId: { gmailThreadId: tid, accountId } },
+        create: {
+          gmailThreadId: tid,
+          accountId,
+          subject: t.subject,
+          snippet: "",
+          participantAddresses: [...t.participants],
+          gmailLabelIds: ["INBOX"],
+          messageCount: t.uids.length,
+          hasAttachments: t.hasAttachments,
+          isUnread: t.isUnread,
+          lastMessageAt: t.lastDate,
+          firstMessageAt: t.firstDate,
+          historyId: String(Math.max(...t.uids)),
+          isStale: false,
+        },
+        update: {
+          subject: t.subject,
+          participantAddresses: [...t.participants],
+          gmailLabelIds: ["INBOX"],
+          messageCount: t.uids.length,
+          hasAttachments: t.hasAttachments,
+          isUnread: t.isUnread,
+          lastMessageAt: t.lastDate,
+          firstMessageAt: t.firstDate,
+          historyId: String(Math.max(...t.uids)),
+          isStale: false,
+          syncedAt: new Date(),
+        },
+        select: { id: true, gmailThreadId: true },
+      });
+    })
+  );
+
+  await inBatches(
+    rows.filter((r) => !known.has(r.gmailThreadId)),
+    10,
+    (r) => applyRulesToThread(r.id).catch(() => {})
+  );
 
   await prisma.account.update({
     where: { id: accountId },
@@ -224,6 +247,10 @@ export async function incrementalSync(accountId: string): Promise<void> {
   let synced = 0;
   const newUnreadSubjects: string[] = [];
 
+  // Accumulate per-thread while the IMAP connection is open; all DB writes
+  // happen in one batch afterwards (previously: find + upsert per message).
+  const incoming = new Map<string, ThreadAccum>();
+
   try {
     const lock = await client.getMailboxLock("INBOX");
     try {
@@ -251,38 +278,24 @@ export async function incrementalSync(accountId: string): Promise<void> {
           ...(msg.envelope?.cc ?? []),
         ].map((a) => formatAddr(a as { name?: string; address?: string })).filter(Boolean);
 
-        const existing = await prisma.threadMirror.findUnique({
-          where: { gmailThreadId_accountId: { gmailThreadId: tid, accountId } },
-          select: { id: true },
-        });
-        const row = await prisma.threadMirror.upsert({
-          where: { gmailThreadId_accountId: { gmailThreadId: tid, accountId } },
-          create: {
-            gmailThreadId: tid,
-            accountId,
+        const existing = incoming.get(tid);
+        if (existing) {
+          existing.uids.push(uid);
+          addrs.forEach((a) => existing.participants.add(a));
+          if (date > existing.lastDate) existing.lastDate = date;
+          if (date < existing.firstDate) existing.firstDate = date;
+          if (isUnread) existing.isUnread = true;
+          if (hasAtt(msg.bodyStructure)) existing.hasAttachments = true;
+        } else {
+          incoming.set(tid, {
+            uids: [uid],
             subject,
-            snippet: "",
-            participantAddresses: addrs,
-            gmailLabelIds: ["INBOX"],
-            messageCount: 1,
-            hasAttachments: hasAtt(msg.bodyStructure),
+            participants: new Set(addrs),
+            lastDate: date,
+            firstDate: date,
             isUnread,
-            lastMessageAt: date,
-            firstMessageAt: date,
-            historyId: String(uid),
-          },
-          update: {
-            messageCount: { increment: 1 },
-            lastMessageAt: date,
-            ...(isUnread && { isUnread: true }),
-            historyId: String(uid),
-            syncedAt: new Date(),
-          },
-          select: { id: true },
-        });
-        if (!existing) {
-          applyRulesToThread(row.id).catch(() => {});
-          if (isUnread) newUnreadSubjects.push(subject);
+            hasAttachments: hasAtt(msg.bodyStructure),
+          });
         }
         synced++;
       }
@@ -291,6 +304,53 @@ export async function incrementalSync(accountId: string): Promise<void> {
     }
   } finally {
     await client.logout().catch(() => {});
+  }
+
+  if (incoming.size > 0) {
+    const tids = [...incoming.keys()];
+    const knownRows = await prisma.threadMirror.findMany({
+      where: { accountId, gmailThreadId: { in: tids } },
+      select: { gmailThreadId: true },
+    });
+    const known = new Set(knownRows.map((r) => r.gmailThreadId));
+
+    const rows = await prisma.$transaction(
+      tids.map((tid) => {
+        const t = incoming.get(tid)!;
+        return prisma.threadMirror.upsert({
+          where: { gmailThreadId_accountId: { gmailThreadId: tid, accountId } },
+          create: {
+            gmailThreadId: tid,
+            accountId,
+            subject: t.subject,
+            snippet: "",
+            participantAddresses: [...t.participants],
+            gmailLabelIds: ["INBOX"],
+            messageCount: t.uids.length,
+            hasAttachments: t.hasAttachments,
+            isUnread: t.isUnread,
+            lastMessageAt: t.lastDate,
+            firstMessageAt: t.firstDate,
+            historyId: String(Math.max(...t.uids)),
+          },
+          update: {
+            messageCount: { increment: t.uids.length },
+            lastMessageAt: t.lastDate,
+            ...(t.isUnread && { isUnread: true }),
+            historyId: String(Math.max(...t.uids)),
+            syncedAt: new Date(),
+          },
+          select: { id: true, gmailThreadId: true },
+        });
+      })
+    );
+
+    const newThreads = rows.filter((r) => !known.has(r.gmailThreadId));
+    await inBatches(newThreads, 10, (r) => applyRulesToThread(r.id).catch(() => {}));
+    for (const r of newThreads) {
+      const t = incoming.get(r.gmailThreadId)!;
+      if (t.isUnread) newUnreadSubjects.push(t.subject);
+    }
   }
 
   await prisma.account.update({
