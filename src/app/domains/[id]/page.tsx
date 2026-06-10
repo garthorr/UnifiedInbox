@@ -14,7 +14,7 @@ import { KanbanConfigDialog } from "@/components/domains/KanbanConfigDialog";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Plus } from "lucide-react";
 import type { WorkItemStatus } from "@prisma/client";
-import type { KanbanColumnConfig } from "@/app/api/domains/[id]/kanban-config/route";
+import { resolveKanbanColumns } from "@/lib/kanban";
 
 const STATUS_ORDER: WorkItemStatus[] = ["ACTIVE", "WAITING", "DELEGATED", "NEW", "TODOIST"];
 const STATUS_LABELS: Record<WorkItemStatus, string> = {
@@ -25,17 +25,6 @@ const STATUS_LABELS: Record<WorkItemStatus, string> = {
   TODOIST: "In Todoist",
   DONE: "Done",
 };
-
-function resolveKanbanColumns(stored: unknown): KanbanColumnConfig[] {
-  if (Array.isArray(stored) && stored.length > 0) {
-    return stored as KanbanColumnConfig[];
-  }
-  return STATUS_ORDER.map((status) => ({
-    status,
-    label: STATUS_LABELS[status],
-    visible: true,
-  }));
-}
 
 interface PageProps {
   params: Promise<{ id: string }>;

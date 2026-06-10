@@ -11,6 +11,13 @@ function safeFilename(name: string): string {
   return sanitized || "attachment";
 }
 
+// Build a Content-Disposition with both the sanitized ASCII fallback and the
+// RFC 5987 UTF-8 form so non-ASCII filenames survive the download.
+function contentDisposition(name: string): string {
+  const safe = safeFilename(name);
+  return `attachment; filename="${safe}"; filename*=UTF-8''${encodeURIComponent(safe)}`;
+}
+
 export async function GET(
   request: Request,
   {
@@ -67,12 +74,11 @@ export async function GET(
         return NextResponse.json({ error: "Attachment not found" }, { status: 404 });
       }
 
-      const filename = safeFilename(att.filename ?? "attachment");
       const bytes = new Uint8Array(att.content);
       return new Response(bytes, {
         headers: {
           "Content-Type": att.contentType ?? "application/octet-stream",
-          "Content-Disposition": `attachment; filename="${filename}"`,
+          "Content-Disposition": contentDisposition(att.filename ?? "attachment"),
           "Content-Length": bytes.length.toString(),
         },
       });
@@ -107,7 +113,7 @@ export async function GET(
         return null;
       }
       const found = findPart(msgRes.data.payload?.parts ?? [], attachmentId);
-      if (found) filename = safeFilename(found);
+      if (found) filename = found;
     } catch {
       // Non-fatal — fall back to generic filename
     }
@@ -131,7 +137,7 @@ export async function GET(
     return new Response(buffer, {
       headers: {
         "Content-Type": "application/octet-stream",
-        "Content-Disposition": `attachment; filename="${filename}"`,
+        "Content-Disposition": contentDisposition(filename),
         "Content-Length": buffer.length.toString(),
       },
     });

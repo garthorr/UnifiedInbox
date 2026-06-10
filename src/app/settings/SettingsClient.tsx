@@ -25,6 +25,7 @@ import { Label } from "@/components/ui/label";
 import { relativeTime } from "@/lib/utils";
 import { RulesPanel } from "@/components/settings/RulesPanel";
 import { NotificationsPanel } from "@/components/settings/NotificationsPanel";
+import { SystemPanel } from "@/components/settings/SystemPanel";
 
 interface Account {
   id: string;
@@ -267,6 +268,9 @@ export function SettingsClient({ accounts: initialAccounts, todoist, domains: in
       </div>
 
       <div className="flex-1 overflow-y-auto px-6 py-6 max-w-2xl space-y-8">
+        {/* Worker status, account health, sessions */}
+        <SystemPanel />
+
         {/* Connected accounts */}
         <section>
           <h2 className="text-sm font-semibold text-slate-700 mb-3">

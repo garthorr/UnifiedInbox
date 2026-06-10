@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
+import { timingSafeEqual } from "crypto";
 import { exchangeCodeForTokens, getUserInfo } from "@/lib/gmail/oauth";
 import { encrypt } from "@/lib/encrypt";
 import { prisma } from "@/lib/db";
@@ -27,10 +28,15 @@ export async function GET(request: Request) {
     );
   }
 
-  // Validate state to prevent CSRF
+  // Validate state to prevent CSRF (constant-time — a plain !== leaks
+  // matching-prefix timing).
   const cookieStore = await cookies();
   const storedState = cookieStore.get(STATE_COOKIE)?.value;
-  if (!storedState || storedState !== state) {
+  const stateMatches =
+    !!storedState &&
+    storedState.length === state.length &&
+    timingSafeEqual(Buffer.from(storedState), Buffer.from(state));
+  if (!stateMatches) {
     return NextResponse.redirect(
       new URL("/settings?error=invalid_state", appUrl)
     );

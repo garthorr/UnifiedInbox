@@ -1,5 +1,6 @@
 import { getGmailClient } from "./client";
 import { prisma } from "../db";
+import { sanitizeHeader, encodeSubjectForRawMime } from "../mail-headers";
 
 // ─── Thread-level actions ────────────────────────────────────────────────────
 
@@ -45,15 +46,17 @@ function buildRaw(fields: {
   inReplyTo?: string | null;
   references?: string | null;
 }): string {
+  // Reply subjects and Message-IDs come from inbound mail (sender-controlled)
+  // — sanitize every header value to block CRLF header injection.
   const lines = [
-    `From: ${fields.from}`,
-    `To: ${fields.to}`,
-    `Subject: ${fields.subject}`,
+    `From: ${sanitizeHeader(fields.from)}`,
+    `To: ${sanitizeHeader(fields.to)}`,
+    `Subject: ${encodeSubjectForRawMime(fields.subject)}`,
     `Content-Type: text/plain; charset=UTF-8`,
     `MIME-Version: 1.0`,
   ];
-  if (fields.inReplyTo) lines.push(`In-Reply-To: ${fields.inReplyTo}`);
-  if (fields.references) lines.push(`References: ${fields.references}`);
+  if (fields.inReplyTo) lines.push(`In-Reply-To: ${sanitizeHeader(fields.inReplyTo)}`);
+  if (fields.references) lines.push(`References: ${sanitizeHeader(fields.references)}`);
   lines.push("", fields.body);
 
   return Buffer.from(lines.join("\r\n"))

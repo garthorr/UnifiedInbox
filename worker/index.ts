@@ -10,6 +10,7 @@ import { syncIdleAccounts, stopAllIdle } from "../src/lib/imap/idle";
 import { syncTodoistLinks, isConfigured as todoistConfigured } from "../src/lib/todoist";
 import { deliverDueReminders } from "../src/lib/notifications";
 import { isPushConfigured } from "../src/lib/push";
+import { pruneOldData } from "../src/lib/maintenance";
 
 const SYNC_INTERVAL = process.env.SYNC_INTERVAL_MINUTES ?? "15";
 
@@ -66,6 +67,26 @@ async function syncTodoist(): Promise<void> {
   }
 }
 
+// Heartbeat: touch the WorkerStatus singleton so the web app (status panel,
+// /api/health) can tell the worker is alive. Runs on its own schedule so a
+// slow sweep doesn't make a healthy worker look dead.
+const WORKER_STARTED_AT = new Date();
+async function beatHeartbeat(): Promise<void> {
+  await prisma.workerStatus.upsert({
+    where: { id: "singleton" },
+    create: { id: "singleton", startedAt: WORKER_STARTED_AT, heartbeatAt: new Date() },
+    update: { startedAt: WORKER_STARTED_AT, heartbeatAt: new Date() },
+  });
+}
+beatHeartbeat().catch((err) => console.error("[worker] Heartbeat error:", err));
+cron.schedule("*/30 * * * * *", async () => {
+  try {
+    await beatHeartbeat();
+  } catch (err) {
+    console.error("[worker] Heartbeat error:", err);
+  }
+});
+
 // On startup: run initial syncs for any never-synced accounts, then start
 // IMAP IDLE watchers for real-time delivery.
 runInitialSyncs()
@@ -92,6 +113,7 @@ cron.schedule(schedule, async () => {
     await drainQueue();
     await pruneOldJobs();
     await pruneThreadImportLogs();
+    await pruneOldData();
     // Keep IMAP IDLE watchers in sync with the current set of active accounts.
     await syncIdleAccounts();
   } catch (err) {

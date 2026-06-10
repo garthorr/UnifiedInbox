@@ -1,6 +1,7 @@
 services:
   db:
-    image: postgres:16-alpine
+    # Minor-version pin: patch releases still flow; bump minors deliberately.
+    image: postgres:16.6-alpine
     environment:
       POSTGRES_DB: unified_inbox
       POSTGRES_USER: ${POSTGRES_USER}
@@ -10,6 +11,7 @@ services:
     networks:
       - internal
     restart: unless-stopped
+    mem_limit: 512m
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d unified_inbox"]
       interval: 5s
@@ -30,6 +32,7 @@ services:
       - internal
       - traefik
     restart: unless-stopped
+    mem_limit: 1g
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=traefik"
@@ -52,6 +55,7 @@ services:
     networks:
       - internal
     restart: unless-stopped
+    mem_limit: 512m
 
 networks:
   internal:
