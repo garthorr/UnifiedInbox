@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { CheckCircle, AlertCircle, RefreshCw, MonitorSmartphone, Download } from "lucide-react";
+import { CheckCircle, AlertCircle, RefreshCw, MonitorSmartphone, Download, Sparkles } from "lucide-react";
 import { relativeTime } from "@/lib/utils";
 import { toast } from "@/lib/toast";
 
@@ -44,6 +44,14 @@ interface SessionInfo {
   current: boolean;
 }
 
+interface AiStatus {
+  configured: boolean;
+  reachable: boolean;
+  model: string;
+  modelAvailable: boolean;
+  hint?: string;
+}
+
 function shortUserAgent(ua: string | null): string {
   if (!ua) return "Unknown device";
   if (/iphone|ipad/i.test(ua)) return "iOS device";
@@ -58,18 +66,21 @@ function shortUserAgent(ua: string | null): string {
 export function SystemPanel() {
   const [status, setStatus] = useState<StatusResponse | null>(null);
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
+  const [ai, setAi] = useState<AiStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [revoking, setRevoking] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [statusRes, sessionsRes] = await Promise.all([
+      const [statusRes, sessionsRes, aiRes] = await Promise.all([
         fetch("/api/admin/status"),
         fetch("/api/auth/sessions"),
+        fetch("/api/ai/status"),
       ]);
       if (statusRes.ok) setStatus(await statusRes.json());
       if (sessionsRes.ok) setSessions((await sessionsRes.json()).sessions ?? []);
+      if (aiRes.ok) setAi(await aiRes.json());
     } catch {
       // Leave whatever was rendered; the refresh button retries.
     } finally {
@@ -146,6 +157,46 @@ export function SystemPanel() {
             </p>
           </div>
         </div>
+
+        {/* AI (Ollama) status */}
+        {ai && (
+          <div
+            className={`flex items-start gap-3 rounded-lg border px-4 py-3 ${
+              ai.configured && (!ai.reachable || !ai.modelAvailable)
+                ? "border-amber-200 bg-amber-50"
+                : "bg-white"
+            }`}
+          >
+            <div className="mt-0.5 flex-shrink-0">
+              {!ai.configured ? (
+                <Sparkles className="h-4 w-4 text-slate-300" />
+              ) : ai.reachable && ai.modelAvailable ? (
+                <CheckCircle className="h-4 w-4 text-green-500" />
+              ) : (
+                <AlertCircle className="h-4 w-4 text-amber-500" />
+              )}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-slate-800">
+                AI assistance{" "}
+                {!ai.configured
+                  ? "disabled"
+                  : ai.reachable && ai.modelAvailable
+                    ? "ready"
+                    : ai.reachable
+                      ? "— model missing"
+                      : "— not reachable"}
+              </p>
+              <p className="text-xs text-slate-500">
+                {!ai.configured
+                  ? "Set OLLAMA_BASE_URL to enable draft replies, summaries, and task suggestions."
+                  : ai.reachable && ai.modelAvailable
+                    ? `Ollama reachable · model ${ai.model}`
+                    : (ai.hint ?? "Ollama is not responding.")}
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Account health — only shown when something needs attention */}
         {unhealthyAccounts.map((a) => (

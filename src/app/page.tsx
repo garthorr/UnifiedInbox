@@ -6,7 +6,7 @@ import { prisma } from "@/lib/db";
 import { Prisma } from "@prisma/client";
 import { isConfigured as todoistConfigured } from "@/lib/todoist";
 import { parsePositiveInt, parseISODateOrNull } from "@/lib/params";
-import { notSnoozedFilter } from "@/lib/thread-filters";
+import { notSnoozedFilter, notSpamFilter } from "@/lib/thread-filters";
 import { AppShell } from "@/components/layout/AppShell";
 import { InboxFilters } from "@/components/inbox/InboxFilters";
 import { InboxPane } from "@/components/inbox/InboxPane";
@@ -44,7 +44,7 @@ async function InboxContent({ searchParams }: PageProps) {
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - days);
 
-  const andClauses: Prisma.ThreadMirrorWhereInput[] = [notSnoozedFilter()];
+  const andClauses: Prisma.ThreadMirrorWhereInput[] = [notSnoozedFilter(), notSpamFilter()];
   if (q) {
     andClauses.push({
       OR: [

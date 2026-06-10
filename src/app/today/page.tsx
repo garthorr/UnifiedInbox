@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { prisma } from "@/lib/db";
 import { isConfigured as todoistConfigured } from "@/lib/todoist";
-import { notSnoozedFilter } from "@/lib/thread-filters";
+import { notSnoozedFilter, notSpamFilter } from "@/lib/thread-filters";
 import { AppShell } from "@/components/layout/AppShell";
 import { TodayClient } from "./TodayClient";
 
@@ -17,7 +17,7 @@ export default async function TodayPage() {
         isUnread: true,
         workItemId: null,
         lastMessageAt: { gte: sevenDaysAgo },
-        AND: [notSnoozedFilter()],
+        AND: [notSnoozedFilter(), notSpamFilter()],
       },
       orderBy: { lastMessageAt: "desc" },
       take: 50,

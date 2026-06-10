@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { parsePositiveInt, parseISODateOrNull } from "@/lib/params";
-import { notSnoozedFilter, isSnoozedFilter } from "@/lib/thread-filters";
+import { notSnoozedFilter, isSnoozedFilter, notSpamFilter } from "@/lib/thread-filters";
 import type { Prisma } from "@prisma/client";
 
 export async function GET(request: Request) {
@@ -42,7 +42,7 @@ export async function GET(request: Request) {
   if (from)               where.participantAddresses = { hasSome: [from] };
 
   // Build the AND chain so it composes cleanly with the search OR.
-  const andClauses: Prisma.ThreadMirrorWhereInput[] = [];
+  const andClauses: Prisma.ThreadMirrorWhereInput[] = [notSpamFilter()];
   if (snoozedFilter === "true") andClauses.push(isSnoozedFilter());
   else                          andClauses.push(notSnoozedFilter());
 

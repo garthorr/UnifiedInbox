@@ -19,3 +19,18 @@ export function notSnoozedFilter(): Prisma.ThreadMirrorWhereInput {
 export function isSnoozedFilter(): Prisma.ThreadMirrorWhereInput {
   return { snoozedUntil: { gt: new Date() } };
 }
+
+// Gmail labels for mail the user shouldn't see in normal views. Gmail's
+// search-based initial sync already drops these, but the incremental History
+// API surfaces spam/trash label changes, so threads can still land in the
+// mirror carrying these labels. (IMAP threads are always labelled "INBOX".)
+export const HIDDEN_LABELS = ["SPAM", "TRASH"] as const;
+
+/**
+ * Exclude spam/trash threads. Applied to every default listing (inbox, today,
+ * snoozed, domain views) so "All Mail" means all real mail, not spam.
+ */
+export function notSpamFilter(): Prisma.ThreadMirrorWhereInput {
+  return { NOT: { gmailLabelIds: { hasSome: [...HIDDEN_LABELS] } } };
+}
+
